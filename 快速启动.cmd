@@ -47,11 +47,12 @@ echo ✅ Python 环境检查通过
 echo.
 
 rem 快速安装依赖
+set "PIP_PACKAGES=fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions"
 echo 正在安装依赖包...
-pip install fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions --quiet --disable-pip-version-check
+pip install %PIP_PACKAGES% --quiet --disable-pip-version-check
 if errorlevel 1 (
     echo 依赖安装失败，尝试使用国内镜像源...
-    pip install fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet --disable-pip-version-check
+    pip install %PIP_PACKAGES% -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet --disable-pip-version-check
 )
 
 rem 创建基本目录
@@ -101,6 +102,18 @@ if not exist "chfs-simple.yaml" (
     ) > chfs-simple.yaml
 )
 
+rem 检测服务器 IPv4 地址，方便在其他电脑上访问
+set "SERVER_ADDR="
+for /f "tokens=2 delims=:" %%A in ('ipconfig ^| findstr /c:"IPv4 地址" /c:"IPv4 Address"') do (
+    for /f "tokens=*" %%B in ("%%A") do (
+        if not defined SERVER_ADDR set "SERVER_ADDR=%%B"
+    )
+)
+if not defined SERVER_ADDR set "SERVER_ADDR=127.0.0.1"
+set "SERVER_PORT=8082"
+set "SERVER_ADDR=!SERVER_ADDR: =!"
+set "ACCESS_URL=http://!SERVER_ADDR!:%SERVER_PORT%"
+
 rem 在 data\public 中创建欢迎文件
 if not exist "data\public\欢迎使用.txt" (
     (
@@ -113,9 +126,10 @@ if not exist "data\public\欢迎使用.txt" (
         echo   - 分享文本
         echo.
         echo 访问方式：
-        echo   Web界面：http://127.0.0.1:8082
-        echo   WebDAV：http://127.0.0.1:8082/webdav
+        echo   Web界面：!ACCESS_URL!
+        echo   WebDAV： !ACCESS_URL!/webdav
         echo.
+        echo 🌐 请使用服务器电脑的 IP 地址（当前检测为：!SERVER_ADDR!）在其他电脑的浏览器中访问。
         echo 👤 默认账户：admin / 123456
         echo.
         echo 📖 更多功能请查看项目文档
@@ -130,9 +144,9 @@ echo ===============================================================
 echo.
 echo 启动文件服务器...
 echo.
-echo 访问地址：
-echo    Web界面：http://127.0.0.1:8082
-echo    WebDAV： http://127.0.0.1:8082/webdav
+echo 访问地址（请在其他电脑上使用服务器的 IP 地址访问）：
+echo    Web界面：!ACCESS_URL!
+echo    WebDAV： !ACCESS_URL!/webdav
 
 echo 登录账户：admin / 123456
 
@@ -142,10 +156,11 @@ echo 提示：按 Ctrl+C 可停止服务器
 
 echo ===============================================================
 echo.
-
-echo 正在打开浏览器...
-timeout /t 3 /nobreak >nul
-start "" http://127.0.0.1:8082
+echo ✅ 准备完成，正在启动服务器...
+echo.
+echo 💡 如需在服务器这台电脑上打开 Web 界面，可运行同目录下的 "打开Web界面.cmd"
+echo    其他电脑请在浏览器中访问: !ACCESS_URL!
+echo.
 
 rem 启动服务器
 set "CHFS_CONFIG=%CD%\chfs-simple.yaml"

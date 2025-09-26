@@ -2,6 +2,8 @@
 API routes for chfs-py
 """
 
+from __future__ import annotations
+
 import logging
 import time
 from pathlib import Path
@@ -28,6 +30,33 @@ api_router = APIRouter(prefix="/api", tags=["api"])
 
 # Text shares storage (in-memory for simplicity)
 text_shares = {}
+
+
+# Request models
+class MkdirRequest(BaseModel):
+    root: str
+    path: str
+
+
+class RenameRequest(BaseModel):
+    root: str
+    path: str
+    newName: str
+
+
+class DeleteRequest(BaseModel):
+    root: str
+    paths: List[str]
+
+
+class TextShareRequest(BaseModel):
+    text: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    confirmPassword: str
 
 
 # Session endpoints
@@ -144,33 +173,6 @@ async def register_user(register_req: RegisterRequest):
             "roots": default_roots,
         },
     ).to_dict()
-
-
-# Request models
-class MkdirRequest(BaseModel):
-    root: str
-    path: str
-
-
-class RenameRequest(BaseModel):
-    root: str
-    path: str
-    newName: str
-
-
-class DeleteRequest(BaseModel):
-    root: str
-    paths: List[str]
-
-
-class TextShareRequest(BaseModel):
-    text: str
-
-
-class RegisterRequest(BaseModel):
-    username: str
-    password: str
-    confirmPassword: str
 
 
 @api_router.get("/list")
