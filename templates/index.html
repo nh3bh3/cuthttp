@@ -20,305 +20,610 @@
         } | tojson }};
     </script>
 </head>
-<body class="bg-gray-100 min-h-screen">
-    <div x-data="fileManager()" x-cloak class="container mx-auto px-4 py-6 max-w-7xl">
-        <!-- Header -->
-        <header class="bg-white rounded-lg shadow-sm mb-6 p-6">
-            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h1 class="text-2xl font-bold text-gray-900">{{ brand }}</h1>
-                    <p class="text-gray-600 text-sm mt-1">
-                        <span x-show="isAuthenticated" x-cloak x-text="`Welcome, ${currentUser}`"></span>
-                        <span x-show="!isAuthenticated" x-cloak>Please authenticate to access files</span>
-                    </p>
+<body class="bg-[#f6f8fa] min-h-screen text-gray-900">
+    <div x-data="fileManager()" x-cloak class="min-h-screen flex flex-col">
+        <!-- Global header -->
+        <header class="bg-[#24292f] text-white shadow-sm">
+            <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-white/10">
+                        <i class="fab fa-github text-xl"></i>
+                    </span>
+                    <div>
+                        <p class="text-lg font-semibold tracking-tight">{{ brand }}</p>
+                        <p class="text-xs text-gray-300">Unified project &amp; file workspace</p>
+                    </div>
+                    <nav class="hidden lg:flex items-center gap-4 text-sm font-medium ml-6">
+                        <button type="button" @click="setSection('dashboard')"
+                                :class="currentSection === 'dashboard' ? 'text-white border-b-2 border-white' : 'text-gray-300 hover:text-white'"
+                                class="pb-1 transition-colors">
+                            Overview
+                        </button>
+                        <button type="button" @click="setSection('repositories')"
+                                :class="currentSection === 'repositories' ? 'text-white border-b-2 border-white' : 'text-gray-300 hover:text-white'"
+                                class="pb-1 transition-colors">
+                            Repositories
+                        </button>
+                        <button type="button" @click="setSection('repository')"
+                                :class="currentSection === 'repository' ? 'text-white border-b-2 border-white' : 'text-gray-300 hover:text-white'"
+                                class="pb-1 transition-colors">
+                            Code
+                        </button>
+                    </nav>
                 </div>
-                <div class="flex gap-3" x-cloak>
+                <div class="flex items-center gap-3">
+                    <div class="hidden md:block">
+                        <input type="text" x-model="repositorySearch" @focus="setSection('repositories')"
+                               placeholder="Search repositories"
+                               class="bg-[#1f242b] text-white text-sm rounded-lg border border-white/10 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:border-transparent placeholder:text-gray-400">
+                    </div>
                     <template x-if="isAuthenticated">
-                        <div class="flex gap-3">
-                            <button @click="showUpload = true"
-                                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
-                                <i class="fas fa-upload"></i>
-                                <span class="hidden sm:inline">Upload</span>
+                        <div class="flex items-center gap-3">
+                            <button type="button" @click="setSection('repositories')"
+                                    class="hidden sm:inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-lg text-sm font-medium transition">
+                                <i class="fas fa-book"></i>
+                                <span>Repositories</span>
                             </button>
-                            <button @click="showNewFolder = true"
-                                    class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
-                                <i class="fas fa-folder-plus"></i>
-                                <span class="hidden sm:inline">New Folder</span>
-                            </button>
-                            <button @click="openDirectTransfer()"
-                                    class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
-                                <i class="fas fa-paper-plane"></i>
-                                <span class="hidden sm:inline">Direct Transfer</span>
-                            </button>
-                            <button @click="openControlPanel()"
-                                    class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
-                                <i class="fas fa-sliders-h"></i>
-                                <span class="hidden sm:inline">Control Panel</span>
-                            </button>
-                            <button @click="logout()"
-                                    class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg transition-colors">
-                                <i class="fas fa-sign-out-alt"></i>
-                                <span class="hidden sm:inline">Logout</span>
-                            </button>
+                            <div class="relative" x-data="{ open: false }">
+                                <button type="button" @click="open = !open"
+                                        class="flex items-center gap-2 bg-white/10 hover:bg-white/20 px-3 py-2 rounded-lg text-sm transition">
+                                    <span class="inline-flex items-center justify-center w-9 h-9 rounded-full bg-blue-500 font-semibold"
+                                          x-text="currentUserInitials"></span>
+                                    <span class="hidden sm:block" x-text="currentUser || loginUsername || 'User'"></span>
+                                    <i class="fas fa-chevron-down text-xs"></i>
+                                </button>
+                                <div x-show="open" x-transition @click.away="open = false"
+                                     class="absolute right-0 mt-2 w-56 bg-white text-gray-900 rounded-lg shadow-lg border border-gray-200 z-50">
+                                    <div class="px-4 py-3 border-b border-gray-100">
+                                        <p class="text-sm font-semibold" x-text="currentUser || loginUsername || 'Authenticated user'"></p>
+                                        <p class="text-xs text-gray-500" x-text="`${repoCount} repositories`"></p>
+                                    </div>
+                                    <button type="button"
+                                            class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                                            @click="openControlPanel(); open = false;">
+                                        <i class="fas fa-sliders-h text-gray-500"></i>
+                                        Control panel
+                                    </button>
+                                    <button type="button"
+                                            class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                                            @click="openDirectTransfer(); open = false;">
+                                        <i class="fas fa-paper-plane text-gray-500"></i>
+                                        Direct transfer
+                                    </button>
+                                    <div class="border-t border-gray-100 my-1"></div>
+                                    <button type="button"
+                                            class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-red-600 flex items-center gap-2"
+                                            @click="logout(); open = false;">
+                                        <i class="fas fa-sign-out-alt"></i>
+                                        Sign out
+                                    </button>
+                                </div>
+                            </div>
                         </div>
                     </template>
                     <template x-if="!isAuthenticated">
-                        <button @click="focusLogin()"
-                                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                        <button type="button" @click="focusLogin()"
+                                class="inline-flex items-center gap-2 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition">
                             <i class="fas fa-sign-in-alt"></i>
-                            <span class="hidden sm:inline">Log In</span>
+                            <span>Sign in</span>
                         </button>
                     </template>
                 </div>
             </div>
         </header>
-
-        <div x-show="!isAuthenticated" x-cloak>
-            <!-- Login prompt -->
-            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
-                <div class="flex items-center gap-3">
-                    <i class="fas fa-lock text-yellow-600"></i>
-                    <div>
-                        <h3 class="font-semibold text-yellow-800">Authentication Required</h3>
-                        <p class="text-yellow-700 text-sm mt-1">
-                            Please sign in to continue or create an account below.
-                        </p>
+        <main class="flex-1">
+            <div class="max-w-7xl mx-auto px-4 py-6 space-y-6">
+                <div x-show="!isAuthenticated" x-cloak class="grid gap-6 lg:grid-cols-2">
+                    <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-6">
+                        <div>
+                            <h2 class="text-xl font-semibold text-gray-900">Welcome back</h2>
+                            <p class="text-sm text-gray-500 mt-1">Sign in to access your self-hosted repositories.</p>
+                        </div>
+                        <div class="bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-700 flex items-start gap-3">
+                            <i class="fas fa-lock mt-0.5"></i>
+                            <div>
+                                <p class="font-medium">Secure workspace</p>
+                                <p>Authenticate to manage projects and collaborate just like on GitHub.</p>
+                            </div>
+                        </div>
+                        <div class="space-y-6">
+                            <template x-if="!showRegister">
+                                <form class="space-y-5" @submit.prevent="performLogin()">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1" for="login-username">Username</label>
+                                            <input id="login-username" x-ref="loginUsername" type="text" x-model="loginUsername" autocomplete="username"
+                                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                   placeholder="Enter username" required>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1" for="login-password">Password</label>
+                                            <input id="login-password" type="password" x-model="loginPassword" autocomplete="current-password"
+                                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                   placeholder="Enter password" required>
+                                        </div>
+                                    </div>
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                        <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                                            <input type="checkbox" x-model="rememberCredentials" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                            Remember credentials
+                                        </label>
+                                        <div class="flex items-center gap-3">
+                                            <button type="submit"
+                                                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                                Sign in
+                                            </button>
+                                            <span class="text-xs text-gray-500 hidden sm:block">Default: admin / admin123</span>
+                                        </div>
+                                    </div>
+                                    <p x-show="loginInfo" x-text="loginInfo" class="text-sm text-green-600"></p>
+                                    <p x-show="loginError" x-text="loginError" class="text-sm text-red-600"></p>
+                                    <p class="text-sm text-gray-600">
+                                        Need an account?
+                                        <button type="button" @click="switchToRegister()"
+                                                class="text-blue-600 hover:text-blue-700 font-medium">
+                                            Create one now
+                                        </button>
+                                    </p>
+                                </form>
+                            </template>
+                            <template x-if="showRegister">
+                                <form class="space-y-5" @submit.prevent="performRegister()">
+                                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1" for="register-username">Username</label>
+                                            <input id="register-username" x-ref="registerUsername" type="text" x-model="registerUsername" autocomplete="username"
+                                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                   placeholder="Choose a username" required>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-1" for="register-password">Password</label>
+                                            <input id="register-password" type="password" x-model="registerPassword" autocomplete="new-password"
+                                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                   placeholder="At least 6 characters" required>
+                                        </div>
+                                        <div class="md:col-span-2">
+                                            <label class="block text-sm font-medium text-gray-700 mb-1" for="register-confirm">Confirm password</label>
+                                            <input id="register-confirm" type="password" x-model="registerConfirm" autocomplete="new-password"
+                                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                                   placeholder="Re-enter password" required>
+                                        </div>
+                                    </div>
+                                    <p x-show="registerError" x-text="registerError" class="text-sm text-red-600"></p>
+                                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                        <button type="button" @click="switchToLogin()"
+                                                class="text-sm text-gray-600 hover:text-gray-800">
+                                            Back to sign in
+                                        </button>
+                                        <button type="submit"
+                                                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                            Create account
+                                        </button>
+                                    </div>
+                                </form>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="bg-white border border-dashed border-blue-200 rounded-xl shadow-sm p-6 flex flex-col justify-between">
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                <i class="fas fa-diagram-project text-blue-500"></i>
+                                Project workspace
+                            </h3>
+                            <p class="text-sm text-gray-600 mt-2">Organize shared folders as repositories, collaborate with teammates, and manage files with a GitHub-inspired experience.</p>
+                            <ul class="mt-4 space-y-3 text-sm text-gray-600">
+                                <li class="flex items-start gap-3">
+                                    <i class="fas fa-check text-green-500 mt-1"></i>
+                                    <span>Repository-style navigation with branches, activity feed, and quick actions.</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <i class="fas fa-check text-green-500 mt-1"></i>
+                                    <span>Unified control panel for quotas, users, and direct transfer workflows.</span>
+                                </li>
+                                <li class="flex items-start gap-3">
+                                    <i class="fas fa-check text-green-500 mt-1"></i>
+                                    <span>Secure access with per-user authentication and audit-friendly history.</span>
+                                </li>
+                            </ul>
+                        </div>
+                        <div class="mt-6 bg-blue-50 border border-blue-100 rounded-lg px-4 py-3 text-sm text-blue-700">
+                            <p class="font-medium mb-1">Tip</p>
+                            <p>Grant access to colleagues via the control panel after signing in, then create repositories by sharing folders.</p>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- Login / Register forms -->
-            <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
-                <template x-if="!showRegister">
-                    <form class="space-y-5" @submit.prevent="performLogin()">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1" for="login-username">Username</label>
-                                <input id="login-username" x-ref="loginUsername" type="text" x-model="loginUsername" autocomplete="username"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                       placeholder="Enter username" required>
+                <div x-show="isAuthenticated" x-cloak class="flex flex-col lg:flex-row gap-6">
+                    <aside class="w-full lg:w-72 space-y-6">
+                        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5 space-y-4">
+                            <div class="flex items-center justify-between">
+                                <h2 class="text-xs font-semibold uppercase tracking-wide text-gray-500">Workspace</h2>
+                                <span class="text-xs text-gray-400" x-text="`${repoCount} repos`"></span>
                             </div>
                             <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1" for="login-password">Password</label>
-                                <input id="login-password" type="password" x-model="loginPassword" autocomplete="current-password"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                       placeholder="Enter password" required>
+                                <p class="text-xs uppercase text-gray-500">Current repository</p>
+                                <p class="text-lg font-semibold text-gray-900" x-text="currentRoot || 'None selected'"></p>
+                            </div>
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div class="rounded-lg bg-gray-50 px-3 py-2">
+                                    <p class="text-xs uppercase text-gray-500">Files</p>
+                                    <p class="font-semibold text-gray-800" x-text="activeRepoStats.files"></p>
+                                </div>
+                                <div class="rounded-lg bg-gray-50 px-3 py-2">
+                                    <p class="text-xs uppercase text-gray-500">Folders</p>
+                                    <p class="font-semibold text-gray-800" x-text="activeRepoStats.directories"></p>
+                                </div>
+                                <div class="rounded-lg bg-gray-50 px-3 py-2">
+                                    <p class="text-xs uppercase text-gray-500">Size</p>
+                                    <p class="font-semibold text-gray-800" x-text="formatFileSize(activeRepoStats.size)"></p>
+                                </div>
+                                <div class="rounded-lg bg-gray-50 px-3 py-2">
+                                    <p class="text-xs uppercase text-gray-500">Updated</p>
+                                    <p class="font-semibold text-gray-800" x-text="activeRepoStats.lastUpdated ? formatRelativeTime(activeRepoStats.lastUpdated) : 'Not explored yet'"></p>
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-500 border-t border-gray-100 pt-4">
+                                <p>Total workspace size</p>
+                                <p class="text-sm font-semibold text-gray-900" x-text="formatFileSize(totalRepositorySize)"></p>
                             </div>
                         </div>
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                            <label class="inline-flex items-center gap-2 text-sm text-gray-600">
-                                <input type="checkbox" x-model="rememberCredentials" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                Remember credentials on this device
-                            </label>
-                            <div class="flex items-center gap-3">
-                                <button type="submit"
-                                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-                                    <span>Sign In</span>
-                                </button>
-                                <span class="text-xs text-gray-500 hidden sm:block">Default: admin / admin123</span>
-                            </div>
-                        </div>
-                        <p x-show="loginInfo" x-text="loginInfo" class="text-sm text-green-600"></p>
-                        <p x-show="loginError" x-text="loginError" class="text-sm text-red-600"></p>
-                        <p class="text-sm text-gray-600">
-                            Don't have an account?
-                            <button type="button" @click="switchToRegister()"
-                                    class="text-blue-600 hover:text-blue-700 font-medium">
-                                Create one now
+                        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5 space-y-3">
+                            <h3 class="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                <i class="fas fa-bolt text-amber-500"></i>
+                                Quick actions
+                            </h3>
+                            <button type="button" @click="showUpload = true"
+                                    class="w-full inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:border-blue-400 hover:text-blue-600 transition text-sm">
+                                <i class="fas fa-upload"></i>
+                                Upload files
                             </button>
-                        </p>
-                    </form>
-                </template>
-
-                <template x-if="showRegister">
-                    <form class="space-y-5" @submit.prevent="performRegister()">
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1" for="register-username">Username</label>
-                                <input id="register-username" x-ref="registerUsername" type="text" x-model="registerUsername" autocomplete="username"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                       placeholder="Choose a username" required>
-                            </div>
-                            <div>
-                                <label class="block text-sm font-medium text-gray-700 mb-1" for="register-password">Password</label>
-                                <input id="register-password" type="password" x-model="registerPassword" autocomplete="new-password"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                       placeholder="At least 6 characters" required>
-                            </div>
-                            <div class="md:col-span-2">
-                                <label class="block text-sm font-medium text-gray-700 mb-1" for="register-confirm">Confirm Password</label>
-                                <input id="register-confirm" type="password" x-model="registerConfirm" autocomplete="new-password"
-                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                       placeholder="Re-enter password" required>
-                            </div>
-                        </div>
-                        <p x-show="registerError" x-text="registerError" class="text-sm text-red-600"></p>
-                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                            <button type="button" @click="switchToLogin()"
-                                    class="text-sm text-gray-600 hover:text-gray-800">
-                                Back to sign in
+                            <button type="button" @click="showNewFolder = true"
+                                    class="w-full inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:border-green-400 hover:text-green-600 transition text-sm">
+                                <i class="fas fa-folder-plus"></i>
+                                New folder
                             </button>
-                            <button type="submit"
-                                    class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors">
-                                Create Account
+                            <button type="button" @click="openDirectTransfer()"
+                                    class="w-full inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:border-orange-400 hover:text-orange-600 transition text-sm">
+                                <i class="fas fa-paper-plane"></i>
+                                Direct transfer
+                            </button>
+                            <button type="button" @click="openControlPanel()"
+                                    class="w-full inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-200 hover:border-purple-400 hover:text-purple-600 transition text-sm">
+                                <i class="fas fa-sliders-h"></i>
+                                Control panel
                             </button>
                         </div>
-                    </form>
-                </template>
-            </div>
-        </div>
-
-        <div x-show="isAuthenticated" x-cloak>
-            <!-- Share selector -->
-            <div class="bg-white rounded-lg shadow-sm mb-6 p-4">
-                <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                    <label class="font-medium text-gray-700">Share:</label>
-                    <select x-model="currentRoot" @change="loadFiles()"
-                            class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-                        <option value="">Select a share...</option>
-                        <template x-for="root in accessibleRoots" :key="root">
-                            <option :value="root" x-text="root"></option>
-                        </template>
-                    </select>
-
-                    <!-- Breadcrumb -->
-                    <div x-show="currentRoot" class="flex items-center gap-2 text-sm text-gray-600" x-cloak>
-                        <i class="fas fa-folder text-gray-400"></i>
-                        <span x-text="currentRoot"></span>
-                        <template x-for="(part, index) in pathParts" :key="index">
-                            <span>
-                                <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
-                                <a href="#" @click.prevent="navigateToPath(index)"
-                                   class="hover:text-blue-600 transition-colors" x-text="part"></a>
-                            </span>
-                        </template>
-                    </div>
-                </div>
-            </div>
-
-            <!-- File listing -->
-            <div class="bg-white rounded-lg shadow-sm overflow-hidden"
-                 @drop.prevent="handleDrop"
-                 @dragover.prevent="$el.classList.add('drag-over')"
-                 @dragleave.prevent="$el.classList.remove('drag-over')">
-
-                <!-- Loading state -->
-                <div x-show="loading" class="p-8 text-center text-gray-500" x-cloak>
-                    <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
-                    <p>Loading files...</p>
-                </div>
-
-                <!-- Error state -->
-                <div x-show="error && !loading" class="p-8 text-center text-red-500" x-cloak>
-                    <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
-                    <p x-text="error"></p>
-                    <button @click="loadFiles()" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-                        Retry
-                    </button>
-                </div>
-
-                <!-- File table -->
-                <div x-show="!loading && !error && files.length > 0" x-cloak>
-                    <!-- Toolbar -->
-                    <div class="border-b border-gray-200 p-4 bg-gray-50 flex justify-between items-center">
-                        <div class="flex items-center gap-4">
-                            <span class="text-sm text-gray-600" x-text="`${files.length} items`"></span>
-                            <div x-show="selectedFiles.length > 0" class="text-sm text-blue-600" x-cloak>
-                                <span x-text="`${selectedFiles.length} selected`"></span>
-                                <button @click="deleteSelected()"
-                                        class="ml-3 text-red-600 hover:text-red-700 font-medium">
-                                    <i class="fas fa-trash"></i> Delete
-                                </button>
+                        <div class="bg-white border border-gray-200 rounded-xl shadow-sm p-5">
+                            <div class="flex items-center justify-between">
+                                <h3 class="text-sm font-semibold text-gray-900">Recent activity</h3>
+                                <button type="button" class="text-xs text-blue-600 hover:text-blue-700" @click="setSection('dashboard')">View all</button>
                             </div>
-                        </div>
-                        <button @click="selectAll()" class="text-sm text-blue-600 hover:text-blue-700 font-medium">
-                            Select All
-                        </button>
-                    </div>
-
-                    <!-- File list -->
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-50 border-b border-gray-200">
-                                <tr class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    <th class="px-4 py-3 w-8">
-                                        <input type="checkbox" @change="toggleSelectAll()"
-                                               class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                    </th>
-                                    <th class="px-4 py-3">Name</th>
-                                    <th class="px-4 py-3 hidden md:table-cell">Size</th>
-                                    <th class="px-4 py-3 hidden lg:table-cell">Modified</th>
-                                    <th class="px-4 py-3 w-32">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-gray-200">
-                                <!-- Parent directory -->
-                                <tr x-show="currentPath !== ''" class="file-row hover:bg-gray-50 transition-colors" x-cloak>
-                                    <td class="px-4 py-3"></td>
-                                    <td class="px-4 py-3">
-                                        <a href="#" @click.prevent="navigateUp()"
-                                           class="flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-colors">
-                                            <i class="fas fa-level-up-alt text-gray-400"></i>
-                                            <span>..</span>
-                                        </a>
-                                    </td>
-                                    <td class="px-4 py-3 hidden md:table-cell text-gray-500">-</td>
-                                    <td class="px-4 py-3 hidden lg:table-cell text-gray-500">-</td>
-                                    <td class="px-4 py-3"></td>
-                                </tr>
-
-                                <!-- Files and folders -->
-                                <template x-for="file in files" :key="file.path">
-                                    <tr class="file-row hover:bg-gray-50 transition-colors">
-                                        <td class="px-4 py-3">
-                                            <input type="checkbox"
-                                                   :value="file.path"
-                                                   x-model="selectedFiles"
-                                                   class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                                        </td>
-                                        <td class="px-4 py-3">
-                                            <div class="flex items-center gap-2">
-                                                <i :class="file.is_dir ? 'fas fa-folder text-yellow-500' : 'fas fa-file text-gray-400'"></i>
-                                                <a href="#"
-                                                   @click.prevent="file.is_dir ? navigateToFolder(file.path) : downloadFile(file)"
-                                                   class="text-blue-600 hover:text-blue-800 transition-colors font-medium"
-                                                   x-text="file.name"></a>
+                            <template x-if="activityFeed.length === 0">
+                                <p class="text-sm text-gray-500 mt-3">No activity yet. Upload files or create folders to get started.</p>
+                            </template>
+                            <ul class="mt-3 space-y-3">
+                                <template x-for="item in activityFeed.slice(0,6)" :key="item.id">
+                                    <li class="flex items-start gap-3 text-sm">
+                                        <span class="mt-1 text-gray-400">
+                                            <i class="fas fa-circle"></i>
+                                        </span>
+                                        <div class="flex-1">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <p class="font-medium text-gray-800" x-text="item.message"></p>
+                                                <span class="text-xs text-gray-400" x-text="formatRelativeTime(item.timestamp)"></span>
                                             </div>
-                                        </td>
-                                        <td class="px-4 py-3 hidden md:table-cell text-sm text-gray-600"
-                                            x-text="file.is_dir ? '-' : formatFileSize(file.size)"></td>
-                                        <td class="px-4 py-3 hidden lg:table-cell text-sm text-gray-600"
-                                            x-text="formatDate(file.modified)"></td>
-                                        <td class="px-4 py-3">
-                                            <div class="flex gap-1">
-                                                <button @click="renameFile(file)"
-                                                        class="p-1 text-gray-400 hover:text-blue-600 transition-colors"
-                                                        title="Rename">
-                                                    <i class="fas fa-edit"></i>
-                                                </button>
-                                                <button @click="deleteFile(file.path)"
-                                                        class="p-1 text-gray-400 hover:text-red-600 transition-colors"
-                                                        title="Delete">
-                                                    <i class="fas fa-trash"></i>
-                                                </button>
-                                            </div>
-                                        </td>
-                                    </tr>
+                                            <p class="text-xs text-gray-500">
+                                                <span class="uppercase tracking-wide mr-1" x-text="item.type"></span>
+                                                <span x-text="item.repository ? `in ${item.repository}` : 'workspace'"></span>
+                                            </p>
+                                        </div>
+                                    </li>
                                 </template>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Empty state -->
-                <div x-show="!loading && !error && files.length === 0 && currentRoot" class="p-8 text-center text-gray-500" x-cloak>
-                    <i class="fas fa-folder-open text-4xl mb-4 text-gray-300"></i>
-                    <p class="text-lg font-medium mb-2">This folder is empty</p>
-                    <p class="text-sm">Upload files or create folders to get started</p>
+                            </ul>
+                        </div>
+                    </aside>
+                    <section class="flex-1 space-y-6">
+                        <div x-show="currentSection === 'dashboard'" x-cloak class="bg-white border border-gray-200 rounded-xl shadow-sm p-6 space-y-6">
+                            <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                                <div class="rounded-xl border border-gray-200 bg-[#f6f8fa] px-4 py-4">
+                                    <p class="text-xs uppercase text-gray-500">Repositories</p>
+                                    <p class="text-2xl font-semibold text-gray-900 mt-1" x-text="repoCount"></p>
+                                </div>
+                                <div class="rounded-xl border border-gray-200 bg-[#f6f8fa] px-4 py-4">
+                                    <p class="text-xs uppercase text-gray-500">Tracked files</p>
+                                    <p class="text-2xl font-semibold text-gray-900 mt-1" x-text="totalFileCount"></p>
+                                </div>
+                                <div class="rounded-xl border border-gray-200 bg-[#f6f8fa] px-4 py-4">
+                                    <p class="text-xs uppercase text-gray-500">Storage used</p>
+                                    <p class="text-2xl font-semibold text-gray-900 mt-1" x-text="formatFileSize(totalRepositorySize)"></p>
+                                </div>
+                                <div class="rounded-xl border border-gray-200 bg-[#f6f8fa] px-4 py-4">
+                                    <p class="text-xs uppercase text-gray-500">Active user</p>
+                                    <p class="text-2xl font-semibold text-gray-900 mt-1" x-text="currentUser || loginUsername || '—'"></p>
+                                </div>
+                            </div>
+                            <div class="border-t border-gray-200 pt-6">
+                                <div class="flex items-center justify-between gap-3 mb-4">
+                                    <h3 class="text-base font-semibold text-gray-900">Timeline</h3>
+                                    <div class="flex items-center gap-2 text-sm">
+                                        <button type="button" class="text-blue-600 hover:text-blue-700" @click="setSection('repositories')">
+                                            Manage repositories
+                                        </button>
+                                    </div>
+                                </div>
+                                <template x-if="activityFeed.length === 0">
+                                    <p class="text-sm text-gray-500">No activity has been recorded yet.</p>
+                                </template>
+                                <ul class="space-y-4" x-show="activityFeed.length > 0">
+                                    <template x-for="item in activityFeed" :key="`timeline-${item.id}`">
+                                        <li class="flex items-start gap-3">
+                                            <span class="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100 text-blue-600">
+                                                <i class="fas fa-history text-sm"></i>
+                                            </span>
+                                            <div class="flex-1">
+                                                <div class="flex items-center justify-between gap-3">
+                                                    <p class="text-sm font-semibold text-gray-800" x-text="item.message"></p>
+                                                    <span class="text-xs text-gray-400" x-text="formatRelativeTime(item.timestamp)"></span>
+                                                </div>
+                                                <p class="text-xs text-gray-500 mt-1">
+                                                    <span class="uppercase tracking-wide mr-1" x-text="item.type"></span>
+                                                    <span x-text="item.repository ? `in ${item.repository}` : 'workspace activity'"></span>
+                                                </p>
+                                            </div>
+                                        </li>
+                                    </template>
+                                </ul>
+                            </div>
+                        </div>
+                        <div x-show="currentSection === 'repositories'" x-cloak class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                            <div class="px-6 py-4 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                                <div>
+                                    <h2 class="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                                        <i class="fas fa-book text-gray-400"></i>
+                                        Repositories
+                                    </h2>
+                                    <p class="text-sm text-gray-500">Select a repository to explore files and manage content.</p>
+                                </div>
+                                <div class="flex items-center gap-3">
+                                    <select x-model="repositorySort"
+                                            class="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                                        <option value="name">Sort by name</option>
+                                        <option value="updated">Recently active</option>
+                                        <option value="size">Largest first</option>
+                                    </select>
+                                    <button type="button"
+                                            class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition"
+                                            @click="setSection('repository'); currentRoot && loadFiles();">
+                                        <i class="fas fa-code-branch"></i>
+                                        Open code view
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="divide-y divide-gray-100">
+                                <template x-if="filteredRepositories.length === 0">
+                                    <div class="px-6 py-12 text-center text-gray-500">
+                                        <i class="fas fa-database text-3xl mb-3 text-gray-300"></i>
+                                        <p class="text-lg font-semibold">No repositories available</p>
+                                        <p class="text-sm mt-1">Use the control panel to configure shared directories.</p>
+                                    </div>
+                                </template>
+                                <template x-for="repo in filteredRepositories" :key="`repo-${repo.name}`">
+                                    <div class="px-6 py-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4 hover:bg-gray-50 transition">
+                                        <div>
+                                            <div class="flex items-center gap-2">
+                                                <i class="fas fa-book text-gray-400"></i>
+                                                <button type="button" class="text-lg font-semibold text-blue-600 hover:text-blue-700" @click="selectRepository(repo.name)" x-text="repo.name"></button>
+                                                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="repo.badgeClass" x-text="repo.badgeLabel"></span>
+                                            </div>
+                                            <p class="text-sm text-gray-600 mt-1" x-text="repo.description"></p>
+                                            <p class="text-xs text-gray-400 mt-1">
+                                                Updated <span x-text="repo.stats?.lastUpdated ? formatRelativeTime(repo.stats.lastUpdated) : 'not yet explored'"></span>
+                                            </p>
+                                        </div>
+                                        <div class="flex items-center gap-4 text-sm text-gray-600">
+                                            <div class="flex items-center gap-1">
+                                                <i class="fas fa-star text-amber-500"></i>
+                                                <span x-text="repo.stars"></span>
+                                            </div>
+                                            <div class="flex items-center gap-1">
+                                                <i class="fas fa-code-branch text-gray-400"></i>
+                                                <span x-text="repo.forks"></span>
+                                            </div>
+                                            <div class="flex items-center gap-1">
+                                                <i class="fas fa-eye text-gray-400"></i>
+                                                <span x-text="repo.watchers"></span>
+                                            </div>
+                                            <button type="button"
+                                                    class="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 text-sm hover:border-blue-400 hover:text-blue-600 transition"
+                                                    @click="selectRepository(repo.name)">
+                                                <i class="fas fa-folder-open"></i>
+                                                Open
+                                            </button>
+                                        </div>
+                                    </div>
+                                </template>
+                            </div>
+                        </div>
+                        <div x-show="currentSection === 'repository'" x-cloak class="space-y-4">
+                            <div x-show="!currentRoot" class="bg-white border border-gray-200 rounded-xl shadow-sm px-6 py-12 text-center text-gray-500">
+                                <i class="fas fa-database text-3xl mb-3 text-gray-300"></i>
+                                <p class="text-lg font-semibold text-gray-900">Select a repository</p>
+                                <p class="text-sm mt-2 text-gray-600">Choose a project from the repository list to explore its files.</p>
+                                <button type="button"
+                                        class="mt-4 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition"
+                                        @click="setSection('repositories')">
+                                    <i class="fas fa-book"></i>
+                                    Browse repositories
+                                </button>
+                            </div>
+                            <div x-show="currentRoot" class="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                                <div class="px-6 py-5 border-b border-gray-200 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                                    <div>
+                                        <div class="flex items-center gap-2">
+                                            <i class="fas fa-book text-gray-400"></i>
+                                            <h2 class="text-xl font-semibold text-gray-900" x-text="currentRoot"></h2>
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" :class="currentRepo?.badgeClass" x-text="currentRepo?.badgeLabel || 'Workspace'"></span>
+                                        </div>
+                                        <p class="text-sm text-gray-600 mt-1" x-text="currentRepo?.description || 'Repository details and file listing.'"></p>
+                                    </div>
+                                    <div class="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                                        <div class="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full">
+                                            <i class="fas fa-star text-amber-500"></i>
+                                            <span x-text="currentRepo?.stars || 0"></span>
+                                        </div>
+                                        <div class="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full">
+                                            <i class="fas fa-code-branch text-gray-400"></i>
+                                            <span x-text="currentRepo?.forks || 0"></span>
+                                        </div>
+                                        <div class="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full">
+                                            <i class="fas fa-eye text-gray-400"></i>
+                                            <span x-text="currentRepo?.watchers || 0"></span>
+                                        </div>
+                                        <button type="button"
+                                                class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition"
+                                                @click="showUpload = true">
+                                            <i class="fas fa-upload"></i>
+                                            Upload
+                                        </button>
+                                        <button type="button"
+                                                class="inline-flex items-center gap-2 bg-gray-200 hover:bg-gray-300 text-gray-700 px-4 py-2 rounded-lg transition"
+                                                @click="showNewFolder = true">
+                                            <i class="fas fa-folder-plus"></i>
+                                            New folder
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-wrap items-center gap-3">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs uppercase text-gray-500">Branch</span>
+                                        <span class="inline-flex items-center gap-1 px-2 py-1 bg-white border border-gray-200 rounded-lg text-sm">
+                                            <i class="fas fa-code-branch text-gray-500"></i>
+                                            <span x-text="currentRepo?.branch || 'main'"></span>
+                                        </span>
+                                    </div>
+                                    <div class="flex items-center gap-2 text-sm text-gray-600">
+                                        <button type="button" class="text-blue-600 hover:text-blue-800 font-medium" @click="navigateToRepoRoot()" x-text="currentRoot"></button>
+                                        <template x-for="(part, index) in pathParts" :key="`crumb-${index}`">
+                                            <div class="flex items-center gap-2">
+                                                <i class="fas fa-chevron-right text-gray-400 text-xs"></i>
+                                                <button type="button" class="text-blue-600 hover:text-blue-800 font-medium" @click="navigateToPath(index)" x-text="part"></button>
+                                            </div>
+                                        </template>
+                                    </div>
+                                    <div class="ml-auto flex items-center gap-2 text-sm">
+                                        <label class="text-gray-500">Sort</label>
+                                        <select x-model="fileSortOption" @change="setFileSort($event.target.value)"
+                                                class="border border-gray-300 rounded-lg px-3 py-1.5 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm">
+                                            <option value="name">Name</option>
+                                            <option value="updated">Recently updated</option>
+                                            <option value="size">Size</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="px-6 py-3 bg-white border-b border-gray-200 flex flex-wrap items-center gap-3 text-sm text-gray-600" x-show="!loading && !error">
+                                    <span x-text="`${files.length} items`"></span>
+                                    <template x-if="selectedFiles.length > 0">
+                                        <div class="flex items-center gap-3 text-blue-600 font-medium">
+                                            <span x-text="`${selectedFiles.length} selected`"></span>
+                                            <button type="button" class="inline-flex items-center gap-1 text-red-600 hover:text-red-700" @click="deleteSelected()">
+                                                <i class="fas fa-trash"></i>
+                                                Delete selected
+                                            </button>
+                                        </div>
+                                    </template>
+                                    <button type="button" class="ml-auto text-blue-600 hover:text-blue-700" @click="toggleSelectAll()">Toggle select</button>
+                                </div>
+                                <div x-show="loading" class="px-6 py-12 text-center text-gray-500" x-cloak>
+                                    <i class="fas fa-circle-notch fa-spin text-2xl mb-2"></i>
+                                    <p>Loading repository files…</p>
+                                </div>
+                                <div x-show="error && !loading" class="px-6 py-12 text-center text-red-500" x-cloak>
+                                    <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                                    <p class="font-medium" x-text="error"></p>
+                                    <button type="button"
+                                            class="mt-4 inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition"
+                                            @click="loadFiles()">
+                                        <i class="fas fa-sync-alt"></i>
+                                        Retry
+                                    </button>
+                                </div>
+                                <div x-show="!loading && !error && sortedFiles.length > 0" class="overflow-x-auto">
+                                    <div class="divide-y divide-gray-100">
+                                        <template x-if="currentPath !== ''">
+                                            <div class="px-6 py-3 flex items-center gap-3 text-sm hover:bg-gray-50 transition">
+                                                <div class="w-10"></div>
+                                                <div class="flex-1">
+                                                    <button type="button" class="text-blue-600 hover:text-blue-800 font-medium flex items-center gap-2" @click="navigateUp()">
+                                                        <i class="fas fa-level-up-alt text-gray-400"></i>
+                                                        <span>..</span>
+                                                    </button>
+                                                </div>
+                                                <div class="hidden lg:block w-40 text-right text-xs text-gray-400">-</div>
+                                                <div class="hidden md:block w-48 text-right text-xs text-gray-400">-</div>
+                                                <div class="w-20"></div>
+                                            </div>
+                                        </template>
+                                        <template x-for="file in sortedFiles" :key="file.path">
+                                            <div class="px-6 py-3 flex items-center gap-3 text-sm hover:bg-gray-50 transition">
+                                                <div class="w-10">
+                                                    <input type="checkbox" :value="file.path" x-model="selectedFiles"
+                                                           class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                                </div>
+                                                <div class="flex-1 flex flex-col md:flex-row md:items-center md:gap-4">
+                                                    <div class="flex items-center gap-2">
+                                                        <i :class="file.is_dir ? 'fas fa-folder text-amber-500' : 'fas fa-file-alt text-sky-500'"></i>
+                                                        <button type="button" class="text-blue-600 hover:text-blue-800 font-medium"
+                                                                @click="file.is_dir ? navigateToFolder(file.path) : downloadFile(file)"
+                                                                x-text="file.name"></button>
+                                                    </div>
+                                                    <div class="hidden md:block text-xs text-gray-500" x-text="file.is_dir ? 'Directory' : (file.mime_type || 'File')"></div>
+                                                </div>
+                                                <div class="hidden lg:block w-40 text-right text-xs text-gray-500" x-text="file.is_dir ? '-' : formatFileSize(file.size)"></div>
+                                                <div class="hidden md:block w-48 text-right text-xs text-gray-500" x-text="formatRelativeTime(file.modified)"></div>
+                                                <div class="w-20 flex justify-end">
+                                                    <div class="relative" x-data="{ open: false }">
+                                                        <button type="button" @click="open = !open"
+                                                                class="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100">
+                                                            <i class="fas fa-ellipsis-h"></i>
+                                                        </button>
+                                                        <div x-show="open" x-transition @click.away="open = false"
+                                                             class="absolute right-0 mt-2 w-40 bg-white border border-gray-200 rounded-lg shadow-lg z-40">
+                                                            <button type="button"
+                                                                    class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                                                                    @click="open = false; renameFile(file);">
+                                                                <i class="fas fa-edit text-gray-500"></i>
+                                                                Rename
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                                                                    @click="open = false; deleteFile(file);">
+                                                                <i class="fas fa-trash text-red-500"></i>
+                                                                Delete
+                                                            </button>
+                                                            <button type="button"
+                                                                    class="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center gap-2"
+                                                                    @click="open = false; downloadFile(file);">
+                                                                <i class="fas fa-download text-blue-500"></i>
+                                                                Download
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </template>
+                                    </div>
+                                </div>
+                                <div x-show="!loading && !error && sortedFiles.length === 0" class="px-6 py-12 text-center text-gray-500" x-cloak>
+                                    <i class="fas fa-box-open text-4xl mb-3 text-gray-300"></i>
+                                    <p class="text-lg font-semibold text-gray-900">Repository is empty</p>
+                                    <p class="text-sm text-gray-600">Upload files or create a folder to start building this project.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
                 </div>
             </div>
-        </div>
-
+        </main>
+    </div>
         <!-- Upload Modal -->
         <div x-show="showUpload" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-lg max-w-md w-full p-6" @click.away="showUpload = false">
@@ -952,12 +1257,21 @@
                 registerError: '',
 
                 // File browser state
-                currentRoot: initialRoots.length > 0 ? initialRoots[0] : '',
+                currentRoot: '',
                 currentPath: '',
                 files: [],
                 selectedFiles: [],
                 loading: false,
                 error: null,
+
+                // Project workspace state
+                currentSection: 'repositories',
+                repositories: [],
+                repositorySearch: '',
+                repositorySort: 'name',
+                fileSortOption: 'name',
+                activityFeed: [],
+                activeRepoStats: { files: 0, directories: 0, size: 0, lastUpdated: null },
 
                 // Modals
                 showUpload: false,
@@ -995,6 +1309,11 @@
                 directTransferTab: 'incoming',
 
                 init() {
+                    this.buildRepositoryCatalog(initialRoots);
+                    if (initialRoots.length > 0) {
+                        this.currentSection = 'repositories';
+                    }
+
                     const savedUser = localStorage.getItem('chfsAuthUser');
                     if (!this.loginUsername && savedUser) {
                         this.loginUsername = savedUser;
@@ -1014,6 +1333,77 @@
 
                 get controlPanelTimestamp() {
                     return this.controlPanelFetchedAt ? new Date(this.controlPanelFetchedAt).toLocaleString() : '';
+                },
+
+                get currentRepo() {
+                    return this.repositories.find(repo => repo.name === this.currentRoot) || null;
+                },
+
+                get currentUserInitials() {
+                    if (!this.currentUser) {
+                        return 'NA';
+                    }
+                    const initials = this.currentUser
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .map(part => part[0]?.toUpperCase() || '')
+                        .join('');
+                    return (initials || this.currentUser[0] || 'U').toUpperCase().slice(0, 2);
+                },
+
+                get sortedFiles() {
+                    const allFiles = Array.isArray(this.files) ? [...this.files] : [];
+                    const sortMode = this.fileSortOption;
+                    const directories = allFiles.filter(item => item.is_dir);
+                    const regularFiles = allFiles.filter(item => !item.is_dir);
+
+                    const compareByName = (a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' });
+                    const compareByModified = (a, b) => (b.modified || 0) - (a.modified || 0);
+                    const compareBySize = (a, b) => (b.size || 0) - (a.size || 0);
+
+                    let sorter = compareByName;
+                    if (sortMode === 'updated') {
+                        sorter = compareByModified;
+                    } else if (sortMode === 'size') {
+                        sorter = compareBySize;
+                    }
+
+                    directories.sort(sorter);
+                    regularFiles.sort(sorter);
+                    return [...directories, ...regularFiles];
+                },
+
+                get filteredRepositories() {
+                    const term = (this.repositorySearch || '').toLowerCase();
+                    let repos = [...this.repositories];
+                    if (term) {
+                        repos = repos.filter(repo =>
+                            repo.name.toLowerCase().includes(term) ||
+                            (repo.description || '').toLowerCase().includes(term)
+                        );
+                    }
+
+                    if (this.repositorySort === 'updated') {
+                        repos.sort((a, b) => (b.stats?.lastUpdated || 0) - (a.stats?.lastUpdated || 0));
+                    } else if (this.repositorySort === 'size') {
+                        repos.sort((a, b) => (b.stats?.size || 0) - (a.stats?.size || 0));
+                    } else {
+                        repos.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+                    }
+
+                    return repos;
+                },
+
+                get repoCount() {
+                    return this.repositories.length;
+                },
+
+                get totalFileCount() {
+                    return this.repositories.reduce((acc, repo) => acc + (repo.stats?.files || 0), 0);
+                },
+
+                get totalRepositorySize() {
+                    return this.repositories.reduce((acc, repo) => acc + (repo.stats?.size || 0), 0);
                 },
 
                 buildHeaders(additional = {}) {
@@ -1036,6 +1426,133 @@
                 resetCredentials() {
                     this.authHeader = '';
                     this.clearStoredCredentials();
+                },
+
+                setSection(section) {
+                    this.currentSection = section;
+                },
+
+                buildRepositoryCatalog(roots) {
+                    const palette = [
+                        { label: 'Core', class: 'bg-blue-100 text-blue-700' },
+                        { label: 'Team', class: 'bg-purple-100 text-purple-700' },
+                        { label: 'Docs', class: 'bg-emerald-100 text-emerald-700' },
+                        { label: 'Ops', class: 'bg-amber-100 text-amber-700' },
+                        { label: 'Lab', class: 'bg-rose-100 text-rose-700' },
+                    ];
+
+                    const existing = new Map(this.repositories.map(repo => [repo.name, repo]));
+                    const availableRoots = Array.isArray(roots) ? roots : this.accessibleRoots;
+
+                    const mapped = availableRoots.map((root, index) => {
+                        const previous = existing.get(root) || {};
+                        const paletteItem = palette[index % palette.length];
+                        return {
+                            name: root,
+                            description: previous.description || `Shared repository ${root}`,
+                            branch: previous.branch || 'main',
+                            watchers: previous.watchers ?? (index + 1) * 2,
+                            stars: previous.stars ?? (index + 1) * 4,
+                            forks: previous.forks ?? Math.max(1, index),
+                            stats: previous.stats || { files: 0, directories: 0, size: 0, lastUpdated: null },
+                            badgeLabel: previous.badgeLabel || paletteItem.label,
+                            badgeClass: previous.badgeClass || paletteItem.class,
+                        };
+                    });
+
+                    this.repositories = mapped;
+
+                    for (const root of availableRoots) {
+                        if (!existing.has(root)) {
+                            this.recordActivity('Repository', `Discovered repository ${root}`, root);
+                        }
+                    }
+
+                    this.activityFeed = this.activityFeed.filter(entry => !entry.repository || availableRoots.includes(entry.repository));
+
+                    if (this.currentRoot && !availableRoots.includes(this.currentRoot)) {
+                        this.currentRoot = '';
+                        this.currentPath = '';
+                    }
+
+                    if (this.repositories.length === 0) {
+                        this.currentSection = 'dashboard';
+                    }
+                },
+
+                selectRepository(name) {
+                    if (!name) {
+                        return;
+                    }
+                    const previousRoot = this.currentRoot;
+                    this.currentRoot = name;
+                    this.currentPath = '';
+                    this.selectedFiles = [];
+                    this.currentSection = 'repository';
+
+                    if (previousRoot !== name) {
+                        this.recordActivity('View', `Opened ${name}`, name);
+                    }
+
+                    if (this.isAuthenticated || this.authHeader) {
+                        this.loadFiles();
+                    }
+                },
+
+                navigateToRepoRoot() {
+                    if (!this.currentRoot) {
+                        return;
+                    }
+                    this.currentPath = '';
+                    this.selectedFiles = [];
+                    this.loadFiles();
+                },
+
+                calculateRepoStats(files) {
+                    const stats = { files: 0, directories: 0, size: 0, lastUpdated: null };
+                    if (!Array.isArray(files)) {
+                        return stats;
+                    }
+
+                    for (const entry of files) {
+                        if (entry.is_dir) {
+                            stats.directories += 1;
+                        } else {
+                            stats.files += 1;
+                            stats.size += entry.size || 0;
+                        }
+
+                        if (!stats.lastUpdated || (entry.modified || 0) > stats.lastUpdated) {
+                            stats.lastUpdated = entry.modified || stats.lastUpdated;
+                        }
+                    }
+
+                    return stats;
+                },
+
+                updateRepositoryStats(name, stats) {
+                    const repo = this.repositories.find(item => item.name === name);
+                    if (repo) {
+                        repo.stats = { ...repo.stats, ...stats };
+                    }
+                },
+
+                setFileSort(option) {
+                    this.fileSortOption = option;
+                },
+
+                recordActivity(type, message, repository = this.currentRoot) {
+                    const entry = {
+                        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                        type,
+                        message,
+                        repository,
+                        timestamp: Date.now(),
+                    };
+                    this.activityFeed.unshift(entry);
+                    if (this.activityFeed.length > 30) {
+                        this.activityFeed = this.activityFeed.slice(0, 30);
+                    }
                 },
 
                 focusLogin() {
@@ -1389,10 +1906,21 @@
 
                             const roots = Array.isArray(payload.data?.roots) ? payload.data.roots : [];
                             this.accessibleRoots = roots;
-                            if (!this.currentRoot || !roots.includes(this.currentRoot)) {
-                                this.currentRoot = roots[0] || '';
+                            this.buildRepositoryCatalog(roots);
+
+                            if (this.currentRoot && !roots.includes(this.currentRoot)) {
+                                this.currentRoot = '';
                                 this.currentPath = '';
                             }
+
+                            if (!this.currentRoot && roots.length > 0 && this.currentSection === 'repository') {
+                                this.currentRoot = roots[0];
+                            }
+
+                            if (!this.currentRoot) {
+                                this.currentSection = 'repositories';
+                            }
+
                             await this.refreshDirectTransferLists();
                             return true;
                         }
@@ -1448,6 +1976,7 @@
                         } else {
                             this.files = [];
                             this.selectedFiles = [];
+                            this.currentSection = this.repositories.length > 0 ? 'repositories' : 'dashboard';
                         }
                     } else {
                         this.resetCredentials();
@@ -1461,7 +1990,15 @@
                     this.files = [];
                     this.currentRoot = '';
                     this.currentPath = '';
+                    this.repositories = [];
+                    this.currentSection = 'repositories';
+                    this.activityFeed = [];
+                    this.activeRepoStats = { files: 0, directories: 0, size: 0, lastUpdated: null };
+                    this.repositorySearch = '';
+                    this.repositorySort = 'name';
+                    this.fileSortOption = 'name';
                     this.selectedFiles = [];
+                    this.error = null;
                     this.showUpload = false;
                     this.showNewFolder = false;
                     this.showDirectTransfer = false;
@@ -1506,6 +2043,13 @@
                     this.files = [];
                     this.currentRoot = '';
                     this.currentPath = '';
+                    this.repositories = [];
+                    this.currentSection = 'repositories';
+                    this.activityFeed = [];
+                    this.activeRepoStats = { files: 0, directories: 0, size: 0, lastUpdated: null };
+                    this.repositorySearch = '';
+                    this.repositorySort = 'name';
+                    this.fileSortOption = 'name';
                     this.selectedFiles = [];
                     this.error = null;
                     this.loginError = '';
@@ -1545,6 +2089,7 @@
                     if (!this.currentRoot) {
                         this.files = [];
                         this.selectedFiles = [];
+                        this.activeRepoStats = { files: 0, directories: 0, size: 0, lastUpdated: null };
                         return;
                     }
 
@@ -1569,6 +2114,9 @@
                         if (payload.code === 0) {
                             this.files = payload.data?.files || [];
                             this.selectedFiles = [];
+                            const stats = this.calculateRepoStats(this.files);
+                            this.activeRepoStats = stats;
+                            this.updateRepositoryStats(this.currentRoot, stats);
                         } else {
                             this.error = payload.msg || 'Failed to load files.';
                         }
@@ -1644,9 +2192,14 @@
                     }
                 },
 
-                async deleteFile(path) {
+                async deleteFile(target) {
                     if (!this.ensureAuthenticated()) return;
-                    if (!confirm('Are you sure you want to delete this item?')) return;
+                    const fileObj = target && typeof target === 'object' ? target : null;
+                    const path = fileObj ? fileObj.path : target;
+                    if (!path) return;
+
+                    const displayName = fileObj?.name || (typeof target === 'string' ? target.split('/')?.pop() || target : 'item');
+                    if (!confirm(`Are you sure you want to delete ${displayName}?`)) return;
 
                     try {
                         const response = await fetch('/api/delete', {
@@ -1665,6 +2218,7 @@
 
                         const payload = this.parseApiResponse(await response.json());
                         if (payload.code === 0) {
+                            this.recordActivity('Delete', `Deleted ${displayName}`, this.currentRoot);
                             this.loadFiles();
                         } else {
                             alert('Delete failed: ' + (payload.msg || 'Unknown error'));
@@ -1696,7 +2250,9 @@
 
                         const payload = this.parseApiResponse(await response.json());
                         if (payload.code === 0) {
+                            const removedCount = this.selectedFiles.length;
                             this.selectedFiles = [];
+                            this.recordActivity('Delete', `Deleted ${removedCount} item${removedCount !== 1 ? 's' : ''}`, this.currentRoot);
                             this.loadFiles();
                         } else {
                             alert('Delete failed: ' + (payload.msg || 'Unknown error'));
@@ -1734,6 +2290,9 @@
 
                         const payload = this.parseApiResponse(await response.json());
                         if (payload.code === 0) {
+                            const originalName = this.renameTarget?.name || this.renameTarget?.path?.split('/')?.pop() || 'item';
+                            const newName = this.renameValue.trim();
+                            this.recordActivity('Rename', `Renamed ${originalName} to ${newName}`, this.currentRoot);
                             this.showRename = false;
                             this.renameTarget = null;
                             this.renameValue = '';
@@ -1748,7 +2307,8 @@
 
                 async createFolder() {
                     if (!this.ensureAuthenticated()) return;
-                    if (!this.newFolderName.trim()) return;
+                    const folderName = (this.newFolderName || '').trim();
+                    if (!folderName) return;
 
                     try {
                         const response = await fetch('/api/mkdir', {
@@ -1756,7 +2316,7 @@
                             headers: this.buildHeaders({'Content-Type': 'application/json'}),
                             body: JSON.stringify({
                                 root: this.currentRoot,
-                                path: this.currentPath ? `${this.currentPath}/${this.newFolderName}` : this.newFolderName
+                                path: this.currentPath ? `${this.currentPath}/${folderName}` : folderName
                             })
                         });
 
@@ -1767,6 +2327,8 @@
 
                         const payload = this.parseApiResponse(await response.json());
                         if (payload.code === 0) {
+                            const createdPath = this.currentPath ? `${this.currentPath}/${folderName}` : folderName;
+                            this.recordActivity('Folder', `Created ${createdPath}`, this.currentRoot);
                             this.showNewFolder = false;
                             this.newFolderName = '';
                             this.loadFiles();
@@ -1820,6 +2382,8 @@
                             const payload = this.parseApiResponse(await response.json());
                             if (payload.code !== 0) {
                                 alert(`Upload failed for ${file.name}: ${payload.msg || 'Unknown error'}`);
+                            } else {
+                                this.recordActivity('Upload', `Uploaded ${file.name}`, this.currentRoot);
                             }
                         }
 
@@ -2100,6 +2664,34 @@
                     if (!timestamp) return '';
                     const date = new Date(timestamp * 1000);
                     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                },
+
+                formatRelativeTime(value) {
+                    if (!value) {
+                        return 'just now';
+                    }
+
+                    const timestamp = typeof value === 'number' && value < 1e12 ? value * 1000 : value;
+                    const diff = Date.now() - timestamp;
+
+                    const units = [
+                        { label: 'year', ms: 1000 * 60 * 60 * 24 * 365 },
+                        { label: 'month', ms: 1000 * 60 * 60 * 24 * 30 },
+                        { label: 'week', ms: 1000 * 60 * 60 * 24 * 7 },
+                        { label: 'day', ms: 1000 * 60 * 60 * 24 },
+                        { label: 'hour', ms: 1000 * 60 * 60 },
+                        { label: 'minute', ms: 1000 * 60 },
+                    ];
+
+                    for (const unit of units) {
+                        if (diff >= unit.ms) {
+                            const value = Math.floor(diff / unit.ms);
+                            return `${value} ${unit.label}${value !== 1 ? 's' : ''} ago`;
+                        }
+                    }
+
+                    const seconds = Math.max(1, Math.floor(diff / 1000));
+                    return `${seconds} second${seconds !== 1 ? 's' : ''} ago`;
                 }
             };
         }
