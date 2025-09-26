@@ -93,6 +93,6 @@ if defined WEBDAV_FAILED (
     echo WebDAV 功能：已安装
 )
 echo.
-echo 现在可以运行 "简单启动.bat" 来启动服务器
+echo 现在可以运行 "快速启动.cmd" 来启动服务器
 echo.
 pause

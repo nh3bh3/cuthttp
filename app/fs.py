@@ -44,28 +44,43 @@ def safe_join(root_path: Path, rel_path: str) -> Path:
     """
     
     # Normalize the relative path
-    rel_path = normalize_path(rel_path.strip())
-    
-    # Remove leading slash
-    if rel_path.startswith('/'):
-        rel_path = rel_path[1:]
-    
-    # Join paths
-    full_path = root_path / rel_path
-    
-    # Resolve to absolute path
+    from urllib.parse import unquote
+
+    rel_path = normalize_path(unquote(rel_path.strip()))
+
+    # Special cases that should map to the root itself
+    if rel_path in {"", ".", "./"}:
+        return root_path.resolve()
+
+    # Remove all leading separators to avoid absolute paths overriding the root
+    rel_path = rel_path.lstrip('/')
+
+    # Split the path into components and validate each part
+    parts = []
+    for part in rel_path.split('/'):
+        if not part or part == '.':
+            # Skip empty or current-directory segments caused by // or ./
+            continue
+        if part == '..':
+            raise PathTraversalError(f"Path traversal detected: {rel_path}")
+        parts.append(part)
+
+    # Join the validated parts with the resolved root
+    base_path = root_path.resolve()
+    full_path = base_path.joinpath(*parts) if parts else base_path
+
+    # Resolve symlinks without requiring the target to exist
     try:
-        resolved_path = full_path.resolve()
+        resolved_path = full_path.resolve(strict=False)
     except OSError as e:
         raise FileSystemError(f"Failed to resolve path: {e}")
-    
+
     # Ensure resolved path is within root
-    root_resolved = root_path.resolve()
     try:
-        resolved_path.relative_to(root_resolved)
+        resolved_path.relative_to(base_path)
     except ValueError:
         raise PathTraversalError(f"Path traversal detected: {rel_path}")
-    
+
     return resolved_path
 
 

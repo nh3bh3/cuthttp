@@ -47,26 +47,34 @@ class RuleEvaluator:
         
         # Get fresh config for hot reload support
         config = get_config()
-        
-        # Find matching rules for user
-        matching_rules = []
-        for rule in config.rules:
-            if rule.who == user.name or rule.who == "*":
-                matching_rules.append(rule)
-        
+
+        # Separate explicit and wildcard rules for clearer diagnostics
+        explicit_rules = [rule for rule in config.rules if rule.who == user.name]
+        wildcard_rules = [rule for rule in config.rules if rule.who == "*"]
+
+        matching_rules = explicit_rules or wildcard_rules
+
         if not matching_rules:
             return False, f"No access rules found for user: {user.name}"
-        
+
+        denial_reasons: List[str] = []
+
         # Evaluate each matching rule
         for rule in matching_rules:
             allowed, reason = self._evaluate_rule(rule, operation, root_name, rel_path, client_ip)
             if allowed:
                 logger.debug(f"Access granted: {user.name} -> {operation.value} {root_name}{rel_path}")
                 return True, reason
-        
-        # No rule allowed access
+            denial_reasons.append(reason)
+
+        # No rule allowed access; craft informative message
         logger.warning(f"Access denied: {user.name} -> {operation.value} {root_name}{rel_path}")
-        return False, f"Access denied for {operation.value} operation"
+
+        if not explicit_rules:
+            denial_reasons.insert(0, f"No access rules found for user: {user.name}")
+
+        combined_reason = "; ".join(reason for reason in denial_reasons if reason)
+        return False, combined_reason or f"Access denied for {operation.value} operation"
     
     def _evaluate_rule(
         self,
