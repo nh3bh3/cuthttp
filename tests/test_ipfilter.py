@@ -128,7 +128,25 @@ class TestIpFiltering:
         # Should allow IPs not in deny list
         assert check_ip_allowed("172.16.0.1", allow_list, deny_list)
         assert check_ip_allowed("8.8.8.8", allow_list, deny_list)
-    
+
+    def test_allow_list_overrides_generic_deny(self):
+        """Allow list should override a generic deny-all rule."""
+
+        allow_list = ["192.168.1.0/24"]
+        deny_list = ["0.0.0.0/0"]
+
+        assert check_ip_allowed("192.168.1.10", allow_list, deny_list)
+        assert not check_ip_allowed("8.8.8.8", allow_list, deny_list)
+
+    def test_more_specific_deny_overrides_allow(self):
+        """More specific deny rules should still block access."""
+
+        allow_list = ["192.168.0.0/16"]
+        deny_list = ["192.168.1.100/32"]
+
+        assert not check_ip_allowed("192.168.1.100", allow_list, deny_list)
+        assert check_ip_allowed("192.168.1.101", allow_list, deny_list)
+
     def test_allow_and_deny_lists(self):
         """Test combination of allow and deny lists"""
         

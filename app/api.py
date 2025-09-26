@@ -22,6 +22,7 @@ from .metrics import upload_context, download_context
 from .config import get_config, get_user_by_name
 from .ipfilter import get_client_ip
 from .user_store import add_registered_user
+from .control_panel import build_control_panel_state
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +75,18 @@ async def get_session(request: Request, user: UserInfo = Depends(get_current_use
             "user": {"name": user.name},
             "roots": roots,
         }
+    ).to_dict()
+
+
+@api_router.get("/admin/status")
+async def get_admin_status(user: UserInfo = Depends(get_current_user)):
+    """Return consolidated information for the server control panel."""
+
+    status = build_control_panel_state(user.name)
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="success",
+        data=status,
     ).to_dict()
 
 

@@ -45,58 +45,86 @@ def ip_in_network(ip_str: str, network: Union[ipaddress.IPv4Network, ipaddress.I
         return False
 
 
+def _parse_networks(cidr_list: List[str]):
+    """Parse CIDR list into network objects while preserving order."""
+
+    networks = []
+    for cidr in cidr_list:
+        network = parse_cidr(cidr)
+        if network:
+            networks.append(network)
+    return networks
+
+
+def _get_most_specific(networks, ip_obj):
+    """Return the most specific network from list that matches the IP."""
+
+    matching = [net for net in networks if ip_obj in net and net.version == ip_obj.version]
+    if not matching:
+        return None
+
+    # Larger prefix length means more specific network
+    return max(matching, key=lambda net: net.prefixlen)
+
+
 def check_ip_allowed(ip_str: str, allow_list: List[str], deny_list: List[str]) -> bool:
+    """Return True if the client IP should be allowed access.
+
+    The evaluation honours both allow and deny lists with deterministic behaviour:
+
+    * If the IP matches an entry in the allow list, it is permitted unless a more
+      specific deny rule also matches.
+    * If the IP does not match any allow rule but matches a deny rule, it is
+      rejected.
+    * When no allow list is defined the filter works as a classic deny-list, i.e.
+      every IP is allowed unless it matches a deny rule.
     """
-    Check if IP is allowed based on allow/deny lists
-    
-    Logic:
-    1. If allow_list is empty, allow all IPs by default
-    2. If allow_list is not empty, IP must match at least one allow rule
-    3. If IP matches any deny rule, it's denied (deny takes precedence)
-    
-    Args:
-        ip_str: IP address to check
-        allow_list: List of allowed CIDR patterns
-        deny_list: List of denied CIDR patterns
-        
-    Returns:
-        True if IP is allowed, False otherwise
-    """
-    
+
     if not ip_str:
         return False
-    
-    # Parse allow rules
-    allow_networks = []
-    for allow_rule in allow_list:
-        network = parse_cidr(allow_rule)
-        if network:
-            allow_networks.append(network)
-    
-    # Parse deny rules
-    deny_networks = []
-    for deny_rule in deny_list:
-        network = parse_cidr(deny_rule)
-        if network:
-            deny_networks.append(network)
-    
-    # Check deny rules first (deny takes precedence)
-    for network in deny_networks:
-        if ip_in_network(ip_str, network):
-            logger.debug(f"IP {ip_str} denied by rule: {network}")
-            return False
-    
-    # If no allow rules, allow by default (after checking deny rules)
+
+    try:
+        ip_obj = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+
+    allow_networks = _parse_networks(allow_list)
+    deny_networks = _parse_networks(deny_list)
+
+    most_specific_allow = _get_most_specific(allow_networks, ip_obj)
+    most_specific_deny = _get_most_specific(deny_networks, ip_obj)
+
+    if most_specific_allow:
+        if not most_specific_deny:
+            logger.debug(f"IP {ip_str} allowed by rule: {most_specific_allow}")
+            return True
+
+        # If both lists match we favour the most specific rule.
+        if most_specific_allow.prefixlen >= most_specific_deny.prefixlen:
+            logger.debug(
+                "IP %s allowed by more specific rule: allow %s overrides deny %s",
+                ip_str,
+                most_specific_allow,
+                most_specific_deny,
+            )
+            return True
+
+        logger.debug(
+            "IP %s denied by more specific rule: deny %s overrides allow %s",
+            ip_str,
+            most_specific_deny,
+            most_specific_allow,
+        )
+        return False
+
+    if most_specific_deny:
+        logger.debug(f"IP {ip_str} denied by rule: {most_specific_deny}")
+        return False
+
+    # No allow rule matched. If allow list is empty treat as deny-based filter.
     if not allow_networks:
         return True
-    
-    # Check allow rules
-    for network in allow_networks:
-        if ip_in_network(ip_str, network):
-            logger.debug(f"IP {ip_str} allowed by rule: {network}")
-            return True
-    
-    # IP not in any allow rule
+
     logger.debug(f"IP {ip_str} not in any allow rule")
     return False
 
