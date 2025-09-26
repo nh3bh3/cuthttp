@@ -4,6 +4,7 @@ API routes for chfs-py
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import logging
 import time
@@ -12,7 +13,9 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, Depends
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel
+from urllib.parse import quote
 
 from .models import ApiResponse, ResponseCode, FileInfo, TextShare
 from .auth import get_current_user, UserInfo, hash_password
@@ -26,6 +29,7 @@ from .user_store import add_registered_user, remove_registered_user, list_regist
 from .control_panel import build_control_panel_state
 from .quota import quota_manager
 from .utils import format_file_size, parse_size_to_bytes
+from .direct_transfer import direct_transfer_store, DirectTransferError
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,31 @@ class RegisterRequest(BaseModel):
 class ShareQuotaUpdate(BaseModel):
     quota: Optional[str] = None
     quotaBytes: Optional[int] = None
+
+
+def _direct_transfer_http_exception(exc: DirectTransferError) -> HTTPException:
+    """Convert a DirectTransferError into a HTTPException."""
+
+    status_code = getattr(exc, "status_code", 400) or 400
+    if status_code == 404:
+        code = ResponseCode.NOT_FOUND.value
+    elif status_code == 403:
+        code = ResponseCode.FORBIDDEN.value
+    elif status_code == 413:
+        code = ResponseCode.PAYLOAD_TOO_LARGE.value
+    elif status_code >= 500:
+        code = ResponseCode.INTERNAL_ERROR.value
+    else:
+        code = ResponseCode.ERROR.value
+
+    return HTTPException(
+        status_code=status_code,
+        detail=ApiResponse(
+            code=code,
+            msg=str(exc),
+            data=None,
+        ).to_dict(),
+    )
 
 
 def require_local_admin(request: Request, user: UserInfo = Depends(get_current_user)) -> UserInfo:
@@ -683,6 +712,179 @@ async def download_file(
                 data=None
             ).to_dict()
         )
+
+
+@api_router.get("/direct-transfer/recipients")
+async def list_direct_transfer_recipients(
+    user: UserInfo = Depends(get_current_user),
+):
+    """Return available recipients for direct transfers."""
+
+    config = get_config()
+    recipients = sorted({entry.name for entry in config.users if entry.name != user.name})
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="success",
+        data={"recipients": recipients},
+    ).to_dict()
+
+
+@api_router.post("/direct-transfer/send")
+async def create_direct_transfer(
+    recipient: str = Form(...),
+    file: UploadFile = File(...),
+    expiresIn: Optional[int] = Form(None),
+    user: UserInfo = Depends(get_current_user),
+):
+    """Create a direct file transfer between users."""
+
+    config = get_config()
+    available_users = {entry.name for entry in config.users}
+
+    if recipient == user.name:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Cannot create a transfer to yourself",
+                data=None,
+            ).to_dict(),
+        )
+
+    if recipient not in available_users:
+        raise HTTPException(
+            status_code=404,
+            detail=ApiResponse(
+                code=ResponseCode.NOT_FOUND.value,
+                msg="Recipient not found",
+                data=None,
+            ).to_dict(),
+        )
+
+    max_size = config.ui.maxUploadSize
+
+    try:
+        with upload_context() as counter:
+            entry = await direct_transfer_store.create_transfer(
+                user.name,
+                recipient,
+                file,
+                expires_in=expiresIn,
+                max_size=max_size,
+            )
+            counter.add_bytes(entry.size)
+    except DirectTransferError as exc:
+        raise _direct_transfer_http_exception(exc)
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="Direct transfer created",
+        data={"transfer": entry.to_public_dict()},
+    ).to_dict()
+
+
+@api_router.get("/direct-transfer/list")
+async def list_direct_transfers(
+    direction: str = "incoming",
+    user: UserInfo = Depends(get_current_user),
+):
+    """List pending direct transfers for the current user."""
+
+    try:
+        transfers = await direct_transfer_store.list_transfers(user.name, direction)
+    except DirectTransferError as exc:
+        raise _direct_transfer_http_exception(exc)
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="success",
+        data={"direction": direction.lower(), "transfers": transfers},
+    ).to_dict()
+
+
+@api_router.delete("/direct-transfer/{transfer_id}")
+async def delete_direct_transfer(
+    transfer_id: str,
+    user: UserInfo = Depends(get_current_user),
+):
+    """Delete or cancel a pending direct transfer."""
+
+    try:
+        entry = await direct_transfer_store.delete_transfer(transfer_id, user.name)
+    except DirectTransferError as exc:
+        raise _direct_transfer_http_exception(exc)
+
+    action = "cancelled" if entry.sender == user.name else "dismissed"
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg=f"Transfer {action}",
+        data={"transfer": entry.to_public_dict(), "action": action},
+    ).to_dict()
+
+
+@api_router.get("/direct-transfer/download/{transfer_id}")
+async def download_direct_transfer(
+    transfer_id: str,
+    user: UserInfo = Depends(get_current_user),
+):
+    """Download a direct transfer payload."""
+
+    try:
+        file_path, entry = await direct_transfer_store.prepare_download(transfer_id, user.name)
+    except DirectTransferError as exc:
+        raise _direct_transfer_http_exception(exc)
+
+    try:
+        file_obj = file_path.open("rb")
+    except OSError as exc:
+        direct_transfer_store.cleanup_after_download(entry)
+        logger.error("Failed to open direct transfer payload %s: %s", transfer_id, exc)
+        raise HTTPException(
+            status_code=500,
+            detail=ApiResponse(
+                code=ResponseCode.INTERNAL_ERROR.value,
+                msg="Failed to open transfer payload",
+                data=None,
+            ).to_dict(),
+        ) from exc
+
+    async def stream_file():
+        try:
+            with download_context() as counter:
+                while True:
+                    chunk = file_obj.read(64 * 1024)
+                    if not chunk:
+                        break
+                    counter.add_bytes(len(chunk))
+                    yield chunk
+                    await asyncio.sleep(0)
+        finally:
+            file_obj.close()
+
+    filename = entry.filename or transfer_id
+    fallback_name = "".join(
+        ch if 32 <= ord(ch) < 127 and ch not in {'"', '\\'} else "_"
+        for ch in filename
+    ) or "download"
+
+    headers = create_response_headers(
+        content_length=entry.size,
+        content_type=entry.content_type or "application/octet-stream",
+    )
+    headers["Content-Disposition"] = (
+        f"attachment; filename=\"{fallback_name}\"; filename*=UTF-8''{quote(filename, safe='')}"
+    )
+
+    background = BackgroundTask(direct_transfer_store.cleanup_after_download, entry)
+
+    return StreamingResponse(
+        stream_file(),
+        headers=headers,
+        media_type=entry.content_type or "application/octet-stream",
+        background=background,
+    )
 
 
 @api_router.post("/textshare")
