@@ -76,12 +76,6 @@ def create_directories(config: Config):
             share.path.mkdir(parents=True, exist_ok=True)
             logger.info(f"Ensured share directory exists: {share.path}")
         
-        # Create text share directory
-        if config.ui.textShareDir:
-            text_dir = Path(config.ui.textShareDir)
-            text_dir.mkdir(parents=True, exist_ok=True)
-            logger.info(f"Ensured text share directory exists: {text_dir}")
-        
         # Create log directory
         if config.logging.file:
             log_dir = Path(config.logging.file).parent

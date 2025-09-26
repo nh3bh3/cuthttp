@@ -45,11 +45,6 @@
                                 <i class="fas fa-folder-plus"></i>
                                 <span class="hidden sm:inline">New Folder</span>
                             </button>
-                            <button @click="showTextShare = true"
-                                    class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
-                                <i class="fas fa-share-alt"></i>
-                                <span class="hidden sm:inline">Share Text</span>
-                            </button>
                             <button @click="openDirectTransfer()"
                                     class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
                                 <i class="fas fa-paper-plane"></i>
@@ -383,36 +378,6 @@
             </div>
         </div>
 
-        <!-- Text Share Modal -->
-        <div x-show="showTextShare" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div class="bg-white rounded-lg max-w-2xl w-full p-6" @click.away="showTextShare = false">
-                <h3 class="text-lg font-semibold mb-4">Share Text</h3>
-                <textarea x-model="shareText" placeholder="Enter text to share..."
-                          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32 resize-none"></textarea>
-                <div x-show="shareUrl" class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
-                    <p class="text-sm text-green-800 mb-2">Share URL created:</p>
-                    <div class="flex items-center gap-2">
-                        <input type="text" :value="shareUrl" readonly
-                               class="flex-1 bg-white border border-green-300 rounded px-2 py-1 text-sm">
-                        <button @click="copyToClipboard(shareUrl)"
-                                class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">
-                            Copy
-                        </button>
-                    </div>
-                </div>
-                <div class="flex justify-end gap-3 mt-6">
-                    <button @click="showTextShare = false" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
-                        Cancel
-                    </button>
-                    <button @click="createTextShare()"
-                            :disabled="!shareText.trim()"
-                            class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors">
-                        Create Share
-                    </button>
-                </div>
-            </div>
-        </div>
-
         <!-- Direct Transfer Modal -->
         <div x-show="showDirectTransfer" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-lg max-w-3xl w-full p-6 space-y-4" @click.away="closeDirectTransfer()">
@@ -650,6 +615,46 @@
                                 <span class="font-mono" x-text="controlPanelData?.server?.host"></span>.
                             </li>
                         </ul>
+                        <div class="mt-6 pt-4 border-t border-gray-200">
+                            <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+                                <div>
+                                    <h5 class="text-base font-semibold text-gray-800">Custom URLs</h5>
+                                    <p class="text-sm text-gray-600">Provide external URLs to share with people outside your LAN.</p>
+                                </div>
+                                <span class="text-xs text-gray-500" x-text="`${(controlPanelData?.server?.custom_urls || []).length} configured`"></span>
+                            </div>
+                            <ul class="mt-3 space-y-2" x-show="(controlPanelData?.server?.custom_urls || []).length">
+                                <template x-for="url in (controlPanelData?.server?.custom_urls || [])" :key="`custom-${url}`">
+                                    <li class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                                        <span class="text-sm font-mono text-gray-800 truncate" x-text="url"></span>
+                                        <a :href="url" target="_blank" rel="noopener"
+                                           class="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1">
+                                            <i class="fas fa-arrow-up-right-from-square"></i>
+                                            Open
+                                        </a>
+                                    </li>
+                                </template>
+                            </ul>
+                            <p x-show="!(controlPanelData?.server?.custom_urls || []).length" class="text-sm text-gray-500 mt-2">
+                                No custom URLs configured yet.
+                            </p>
+                            <label class="block text-sm font-medium text-gray-700 mt-4 mb-1" for="custom-url-editor">Modify custom URLs</label>
+                            <textarea id="custom-url-editor" x-model="customUrlEditor" rows="3"
+                                      placeholder="https://example.com\nhttps://share.example.net:8443"
+                                      class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"></textarea>
+                            <div class="flex items-center gap-3 mt-2">
+                                <button @click="updateServerUrls()"
+                                        :disabled="customUrlSaving"
+                                        class="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white px-4 py-2 rounded-lg transition-colors">
+                                    <span x-show="!customUrlSaving">Save URLs</span>
+                                    <span x-show="customUrlSaving" class="flex items-center gap-2">
+                                        <i class="fas fa-circle-notch fa-spin"></i>
+                                        Saving…
+                                    </span>
+                                </button>
+                                <span class="text-xs text-gray-500">One URL per line. Only http/https links are accepted.</span>
+                            </div>
+                        </div>
                     </section>
 
                     <section class="grid md:grid-cols-2 gap-4">
@@ -957,7 +962,6 @@
                 // Modals
                 showUpload: false,
                 showNewFolder: false,
-                showTextShare: false,
                 showDirectTransfer: false,
                 showRename: false,
                 showControlPanel: false,
@@ -966,12 +970,12 @@
                 controlPanelNotice: '',
                 controlPanelData: null,
                 controlPanelFetchedAt: null,
+                customUrlEditor: '',
+                customUrlSaving: false,
 
                 // Form data
                 uploadFiles: [],
                 newFolderName: '',
-                shareText: '',
-                shareUrl: '',
                 renameValue: '',
                 renameTarget: null,
                 uploading: false,
@@ -1184,6 +1188,11 @@
                         if (payload.code === 0) {
                             this.controlPanelData = payload.data || {};
                             this.controlPanelFetchedAt = new Date().toISOString();
+                            const urls = Array.isArray(this.controlPanelData?.server?.custom_urls)
+                                ? this.controlPanelData.server.custom_urls
+                                : [];
+                            this.customUrlEditor = urls.join('\n');
+                            this.customUrlSaving = false;
                         } else {
                             this.controlPanelError = payload.msg || 'Failed to load control panel data.';
                         }
@@ -1262,6 +1271,45 @@
                         return;
                     }
                     await this.updateShareQuota(share.name, {});
+                },
+
+                async updateServerUrls() {
+                    if (!this.ensureAuthenticated(false)) {
+                        return;
+                    }
+
+                    const entries = (this.customUrlEditor || '').split('\n')
+                        .map(line => line.trim())
+                        .filter(Boolean);
+
+                    this.customUrlSaving = true;
+                    this.controlPanelError = '';
+                    this.controlPanelNotice = '';
+
+                    try {
+                        const response = await fetch('/api/admin/server/custom-urls', {
+                            method: 'PUT',
+                            headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
+                            body: JSON.stringify({ urls: entries })
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return;
+                        }
+
+                        const payload = this.parseApiResponse(await response.json());
+                        if (response.ok && payload.code === 0) {
+                            this.controlPanelNotice = 'Server URLs updated.';
+                            await this.refreshControlPanel();
+                        } else {
+                            this.controlPanelError = payload?.msg || 'Failed to update server URLs.';
+                        }
+                    } catch (e) {
+                        this.controlPanelError = 'Failed to update server URLs: ' + e.message;
+                    } finally {
+                        this.customUrlSaving = false;
+                    }
                 },
 
                 async removeUser(username) {
@@ -1416,14 +1464,11 @@
                     this.selectedFiles = [];
                     this.showUpload = false;
                     this.showNewFolder = false;
-                    this.showTextShare = false;
                     this.showDirectTransfer = false;
                     this.showRename = false;
                     this.showControlPanel = false;
                     this.uploadFiles = [];
                     this.uploading = false;
-                    this.shareText = '';
-                    this.shareUrl = '';
                     this.renameTarget = null;
                     this.renameValue = '';
                     this.directTransferRecipients = [];
@@ -1442,6 +1487,8 @@
                     this.controlPanelError = '';
                     this.controlPanelFetchedAt = null;
                     this.controlPanelLoading = false;
+                    this.customUrlEditor = '';
+                    this.customUrlSaving = false;
 
                     if (message !== null) {
                         this.error = message;
@@ -1465,14 +1512,11 @@
                     this.loginPassword = '';
                     this.showUpload = false;
                     this.showNewFolder = false;
-                    this.showTextShare = false;
                     this.showDirectTransfer = false;
                     this.showRename = false;
                     this.showControlPanel = false;
                     this.uploadFiles = [];
                     this.uploading = false;
-                    this.shareText = '';
-                    this.shareUrl = '';
                     this.renameTarget = null;
                     this.renameValue = '';
                     this.directTransferRecipients = [];
@@ -1491,6 +1535,8 @@
                     this.controlPanelError = '';
                     this.controlPanelFetchedAt = null;
                     this.controlPanelLoading = false;
+                    this.customUrlEditor = '';
+                    this.customUrlSaving = false;
                     this.resetCredentials();
                     this.focusLogin();
                 },
@@ -1788,33 +1834,6 @@
                     }
                 },
 
-                async createTextShare() {
-                    if (!this.ensureAuthenticated()) return;
-                    if (!this.shareText.trim()) return;
-
-                    try {
-                        const response = await fetch('/api/textshare', {
-                            method: 'POST',
-                            headers: this.buildHeaders({'Content-Type': 'application/json'}),
-                            body: JSON.stringify({ text: this.shareText })
-                        });
-
-                        if (response.status === 401) {
-                            this.handleUnauthorized();
-                            return;
-                        }
-
-                        const payload = this.parseApiResponse(await response.json());
-                        if (payload.code === 0) {
-                            this.shareUrl = window.location.origin + payload.data.url;
-                        } else {
-                            alert('Text share failed: ' + (payload.msg || 'Unknown error'));
-                        }
-                    } catch (e) {
-                        alert('Text share failed: ' + e.message);
-                    }
-                },
-
                 async openDirectTransfer() {
                     if (!this.ensureAuthenticated()) {
                         return;
@@ -2067,12 +2086,6 @@
                     } else {
                         this.selectAll();
                     }
-                },
-
-                copyToClipboard(text) {
-                    navigator.clipboard.writeText(text).then(() => {
-                        alert('Copied to clipboard!');
-                    });
                 },
 
                 formatFileSize(bytes) {
