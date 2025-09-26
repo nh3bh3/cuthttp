@@ -18,6 +18,7 @@ from .metrics import metrics_manager
 from .quota import quota_manager
 from .user_store import list_registered_usernames
 from .utils import format_file_size
+from .server_store import get_custom_urls
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +210,7 @@ async def build_control_panel_state(current_user: str) -> Dict[str, Any]:
             "scheme": scheme,
             "bind_all_interfaces": bind_all,
             "lan_urls": lan_urls,
+            "custom_urls": get_custom_urls(),
         },
         "shares": shares,
         "metrics": metrics,

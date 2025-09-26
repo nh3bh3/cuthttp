@@ -61,7 +61,6 @@ def admin_client(tmp_path):
         ui:
           brand: "Test"
           title: "Test Panel"
-          textShareDir: "{(tmp_path / 'text').as_posix()}"
           language: "en"
         dav:
           enabled: false
@@ -103,6 +102,7 @@ def test_admin_status_returns_server_snapshot(admin_client):
     data = payload["data"]
     assert data["server"]["port"] == 18080
     assert data["server"]["scheme"] == "http"
+    assert data["server"]["custom_urls"] == []
     assert data["ip_filter"]["lan_allowed"] is True
     assert any(url.startswith("http://") for url in data["server"]["lan_urls"])
     assert data["shares"][0]["name"] == "public"

@@ -212,28 +212,7 @@ $renameBody = @{
 $result = Invoke-ChfsRequest -Method "POST" -Uri "$BaseUrl/api/rename" -Body $renameBody -ContentType "application/json"
 Log-Test "Rename File" $result.Success "Rename '$testFile' to 'renamed-$testFile'" $result.Data
 
-# Test 10: Text share
-$textShareBody = @{
-    text = "This is a test text share from E2E test.`nGenerated at: $(Get-Date)"
-} | ConvertTo-Json
-
-$result = Invoke-ChfsRequest -Method "POST" -Uri "$BaseUrl/api/textshare" -Body $textShareBody -ContentType "application/json"
-$textShareSuccess = $result.Success -and $result.Data.data.id
-Log-Test "Text Share" $textShareSuccess "Create text share" $result.Data
-
-if ($textShareSuccess) {
-    # Test 11: Access text share
-    $shareId = $result.Data.data.id
-    try {
-        $shareResponse = Invoke-WebRequest -Uri "$BaseUrl/t/$shareId" -Method GET
-        $shareAccessSuccess = $shareResponse.StatusCode -eq 200 -and $shareResponse.Content.Contains("test text share")
-        Log-Test "Access Text Share" $shareAccessSuccess "Access text share via public URL" @{ StatusCode = $shareResponse.StatusCode; ShareId = $shareId }
-    } catch {
-        Log-Test "Access Text Share" $false "Failed to access text share: $($_.Exception.Message)"
-    }
-}
-
-# Test 12: WebDAV (if enabled)
+# Test 10: WebDAV (if enabled)
 if ($BaseUrl.StartsWith("http://")) {
     $webdavUrl = $BaseUrl.Replace("http://", "http://${Username}:${Password}@") + "/webdav/$Share"
     try {

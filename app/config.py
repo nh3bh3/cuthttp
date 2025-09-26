@@ -199,7 +199,6 @@ class ConfigManager:
         ui = UiConfig(
             brand=ui_data.get('brand', 'chfs-py'),
             title=ui_data.get('title', 'chfs-py File Server'),
-            textShareDir=ui_data.get('textShareDir', ''),
             maxUploadSize=max_upload_size,
             language=ui_data.get('language', 'en')
         )

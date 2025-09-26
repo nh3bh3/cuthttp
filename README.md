@@ -204,7 +204,6 @@ ipFilter:
 ui:
   brand: "chfs-py"
   title: "chfs-py File Server"
-  textShareDir: "C:\\chfs-data\\public\\_text"
   # maxUploadSize: 104857600  # Optional upload cap (bytes); omit for unlimited uploads
 
 # WebDAV 配置
@@ -274,13 +273,12 @@ pytest
 - `POST /api/delete` - 删除文件/目录 (JSON: {root, paths: []})
 - `GET /api/download?root=<name>&path=<rel>` - 下载文件（支持 Range）
 
-#### 文本分享
-- `POST /api/textshare` - 创建文本分享 (JSON: {text})
-- `GET /t/<id>` - 访问文本分享
-
 #### 系统接口
 - `GET /healthz` - 健康检查
 - `GET /metrics` - 系统指标
+
+#### 管理接口
+- `PUT /api/admin/server/custom-urls` - 更新控制面板中显示的自定义访问 URL（JSON: {urls: []}，仅限本机调用）
 
 ### 权限映射
 - **READ**: list, download, WebDAV PROPFIND/GET

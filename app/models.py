@@ -148,7 +148,6 @@ class UiConfig:
     """UI configuration"""
     brand: str = "chfs-py"
     title: str = "chfs-py File Server"
-    textShareDir: str = ""
     maxUploadSize: Optional[int] = None
     language: str = "en"
 
@@ -210,23 +209,6 @@ class TokenBucket:
             self.tokens -= tokens
             return True
         return False
-
-
-@dataclass
-class TextShare:
-    """Text sharing entry"""
-    id: str
-    text: str
-    created: float
-    expires: Optional[float] = None
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            "id": self.id,
-            "text": self.text,
-            "created": self.created,
-            "expires": self.expires
-        }
 
 
 # HTTP Range parsing result

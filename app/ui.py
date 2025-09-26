@@ -5,7 +5,7 @@ UI routes and template rendering for chfs-py
 import logging
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, Request, HTTPException, Depends
+from fastapi import APIRouter, Request, Depends
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -14,7 +14,6 @@ from .auth import get_current_user_optional, UserInfo
 from .rules import get_accessible_roots
 from .config import get_config
 from .ipfilter import get_client_ip
-from .api import text_shares
 
 logger = logging.getLogger(__name__)
 
@@ -59,37 +58,6 @@ async def index(
     }
     
     return templates.TemplateResponse("index.html", context)
-
-
-@ui_router.get("/t/{share_id}", response_class=HTMLResponse)
-async def view_text_share(
-    request: Request,
-    share_id: str
-):
-    """View text share"""
-    
-    if not templates:
-        return HTMLResponse("<h1>Templates not found</h1>", status_code=500)
-    
-    # Get text share
-    text_share = text_shares.get(share_id)
-    if not text_share:
-        raise HTTPException(status_code=404, detail="Text share not found")
-    
-    config = get_config()
-    
-    # Template context
-    context = {
-        "request": request,
-        "config": config,
-        "share": text_share,
-        "share_id": share_id,
-        "brand": config.ui.brand,
-        "title": config.ui.title,
-        "language": config.ui.language,
-    }
-    
-    return templates.TemplateResponse("text.html", context)
 
 
 @ui_router.get("/login", response_class=HTMLResponse)
