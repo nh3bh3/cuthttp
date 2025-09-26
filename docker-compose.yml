@@ -1,0 +1,174 @@
+# Docker Compose configuration for chfs-py
+version: '3.8'
+
+services:
+  # Main chfs-py service
+  chfs-py:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: chfs-py
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount configuration file
+      - ./chfs.yaml:/app/chfs.yaml:ro
+      
+      # Mount data directories (adjust paths as needed)
+      - ./data/public:/data/public
+      - ./data/home:/data/home
+      - ./data/temp:/data/temp
+      
+      # Mount logs directory
+      - ./logs:/app/logs
+      
+      # Optional: Mount text share directory
+      - ./data/text-shares:/data/public/_text
+    environment:
+      # Optional environment variables
+      - CHFS_CONFIG_PATH=/app/chfs.yaml
+      
+      # Timezone
+      - TZ=UTC
+    
+    # Health check
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    
+    # Resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    
+    # Networks
+    networks:
+      - chfs-network
+    
+    # Labels for management
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.chfs.rule=Host(`files.example.com`)"
+      - "traefik.http.services.chfs.loadbalancer.server.port=8080"
+
+  # Optional: Reverse proxy with Traefik
+  traefik:
+    image: traefik:v2.10
+    container_name: chfs-traefik
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8081:8080"  # Traefik dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik:/etc/traefik
+      - ./certs:/etc/traefik/certs
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+      - --certificatesresolvers.letsencrypt.acme.email=admin@example.com
+      - --certificatesresolvers.letsencrypt.acme.storage=/etc/traefik/certs/acme.json
+    networks:
+      - chfs-network
+    profiles:
+      - proxy
+
+  # Optional: Monitoring with Prometheus
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: chfs-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - chfs-network
+    profiles:
+      - monitoring
+
+  # Optional: Grafana for metrics visualization
+  grafana:
+    image: grafana/grafana:latest
+    container_name: chfs-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    networks:
+      - chfs-network
+    profiles:
+      - monitoring
+
+# Networks
+networks:
+  chfs-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+---
+# Development override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+version: '3.8'
+
+services:
+  chfs-py-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: chfs-py-dev
+    restart: "no"
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount entire source for development
+      - .:/app
+      - /app/__pycache__
+      - /app/.pytest_cache
+    environment:
+      - CHFS_DEBUG=1
+      - PYTHONDONTWRITEBYTECODE=1
+    command: ["python", "-m", "app.main", "--config", "chfs.yaml", "--reload"]
+    profiles:
+      - dev

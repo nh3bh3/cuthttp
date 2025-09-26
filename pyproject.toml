@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "chfs-py"
+version = "1.0.0"
+description = "Lightweight file server similar to CuteHttpFileServer/chfs"
+authors = [
+    {name = "chfs-py", email = "chfs@example.com"},
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pyyaml>=6.0.1",
+    "jinja2>=3.1.2",
+    "aiofiles>=23.2.1",
+    "wsgidav>=4.3.0",
+    "watchdog>=3.0.0",
+    "passlib[bcrypt]>=1.7.4",
+    "typing-extensions>=4.8.0",
+    "python-multipart>=0.0.6",
+    "asgiref>=3.7.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.1",
+    "httpx>=0.25.0",
+    "pytest-cov>=4.1.0",
+]
+build = [
+    "pyinstaller>=6.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/chfs-py/chfs-py"
+Repository = "https://github.com/chfs-py/chfs-py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+]

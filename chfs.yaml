@@ -1,0 +1,102 @@
+# chfs-py Configuration File
+# Windows-compatible paths with double backslashes
+
+server:
+  addr: "0.0.0.0"
+  port: 8080
+  tls:
+    enabled: false
+    certfile: ""
+    keyfile: ""
+
+# Shared directories
+shares:
+  - name: "public"
+    path: "C:\\chfs-data\\public"
+  - name: "home"
+    path: "C:\\chfs-data\\home"
+  - name: "temp"
+    path: "C:\\chfs-data\\temp"
+
+# User accounts (supports plain text passwords or bcrypt hashes)
+users:
+  - name: "alice"
+    pass: "alice123"
+    pass_bcrypt: false
+  - name: "bob"
+    pass: "$2b$12$KIXWCnqvs1.JX8qBZjQgXOzGvF8Ey5qJ8YvF9Qw1Xv2Z3A4B5C6D7"
+    pass_bcrypt: true
+  - name: "admin"
+    pass: "admin456"
+    pass_bcrypt: false
+
+# Access control rules
+rules:
+  # Alice has full access to public and home
+  - who: "alice"
+    allow: ["R", "W", "D"]
+    roots: ["public", "home"]
+    paths: ["/"]
+    ip_allow: ["*"]
+    ip_deny: []
+  
+  # Bob has read-only access to public
+  - who: "bob"
+    allow: ["R"]
+    roots: ["public"]
+    paths: ["/"]
+    ip_allow: ["192.168.0.0/16", "127.0.0.1/32"]
+    ip_deny: []
+  
+  # Admin has full access to all shares
+  - who: "admin"
+    allow: ["R", "W", "D"]
+    roots: ["public", "home", "temp"]
+    paths: ["/"]
+    ip_allow: ["*"]
+    ip_deny: []
+
+# Logging configuration
+logging:
+  json: true
+  file: "C:\\chfs-data\\logs\\chfs.log"
+  level: "INFO"
+  max_size_mb: 100
+  backup_count: 5
+
+# Rate limiting and concurrency
+rateLimit:
+  rps: 50          # requests per second
+  burst: 100       # burst capacity
+  maxConcurrent: 32 # max concurrent requests
+
+# IP filtering (CIDR notation)
+ipFilter:
+  allow:
+    - "127.0.0.1/32"
+    - "192.168.0.0/16"
+    - "10.0.0.0/8"
+    - "::1/128"
+  deny:
+    - "0.0.0.0/0"    # Deny all by default, then allow specific ranges
+
+# UI configuration
+ui:
+  brand: "chfs-py"
+  title: "chfs-py File Server"
+  textShareDir: "C:\\chfs-data\\public\\_text"
+  maxUploadSize: 104857600  # 100MB in bytes
+  language: "en"  # en or zh
+
+# WebDAV configuration
+dav:
+  enabled: true
+  mountPath: "/webdav"
+  lockManager: true
+  propertyManager: true
+
+# Hot reload configuration
+hotReload:
+  enabled: true
+  watchConfig: true
+  debounceMs: 1000  # milliseconds to wait before applying changes

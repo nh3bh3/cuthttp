@@ -1,0 +1,40 @@
+server:
+  addr: "0.0.0.0"
+  port: 8082
+
+shares:
+  - name: "public"
+    path: "F:\\Desktop\\cut\\data\\public"
+  - name: "home"
+    path: "F:\\Desktop\\cut\\data\\home"
+
+users:
+  - name: "admin"
+    pass: "123456"
+    pass_bcrypt: false
+
+rules:
+  - who: "admin"
+    allow: ["R", "W", "D"]
+    roots: ["public", "home"]
+    paths: ["/"]
+    ip_allow: ["*"]
+
+logging:
+  json: false
+  file: "F:\\Desktop\\cut\\logs\\chfs.log"
+  level: "INFO"
+
+ui:
+  brand: "chfs-py"
+  title: "文件服务器"
+  language: "zh"
+
+dav:
+  enabled: true
+  mountPath: "/webdav"
+ 
+rateLimit:
+  rps: 100
+  burst: 200
+  maxConcurrent: 128

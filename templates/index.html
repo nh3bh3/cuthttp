@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="{{ language }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        [x-cloak] { display: none !important; }
+        .drag-over { @apply border-blue-500 bg-blue-50; }
+        .file-row:hover { @apply bg-gray-50; }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div x-data="fileManager()" x-cloak class="container mx-auto px-4 py-6 max-w-7xl">
+        <!-- Header -->
+        <header class="bg-white rounded-lg shadow-sm mb-6 p-6">
+            <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                <div>
+                    <h1 class="text-2xl font-bold text-gray-900">{{ brand }}</h1>
+                    <p class="text-gray-600 text-sm mt-1">
+                        {% if authenticated %}
+                            Welcome, {{ user.name }}
+                        {% else %}
+                            Please authenticate to access files
+                        {% endif %}
+                    </p>
+                </div>
+                <div class="flex gap-3">
+                    {% if authenticated %}
+                        <button @click="showUpload = true" 
+                                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                            <i class="fas fa-upload"></i>
+                            <span class="hidden sm:inline">Upload</span>
+                        </button>
+                        <button @click="showNewFolder = true" 
+                                class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                            <i class="fas fa-folder-plus"></i>
+                            <span class="hidden sm:inline">New Folder</span>
+                        </button>
+                        <button @click="showTextShare = true" 
+                                class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                            <i class="fas fa-share-alt"></i>
+                            <span class="hidden sm:inline">Share Text</span>
+                        </button>
+                    {% endif %}
+                </div>
+            </div>
+        </header>
+
+        {% if not authenticated %}
+            <!-- Login prompt -->
+            <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-6 mb-6">
+                <div class="flex items-center gap-3">
+                    <i class="fas fa-lock text-yellow-600"></i>
+                    <div>
+                        <h3 class="font-semibold text-yellow-800">Authentication Required</h3>
+                        <p class="text-yellow-700 text-sm mt-1">Please provide credentials to access the file server.</p>
+                    </div>
+                </div>
+            </div>
+        {% else %}
+            <!-- Share selector -->
+            <div class="bg-white rounded-lg shadow-sm mb-6 p-4">
+                <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                    <label class="font-medium text-gray-700">Share:</label>
+                    <select x-model="currentRoot" @change="loadFiles()" 
+                            class="border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                        <option value="">Select a share...</option>
+                        {% for root in accessible_roots %}
+                            <option value="{{ root }}">{{ root }}</option>
+                        {% endfor %}
+                    </select>
+                    
+                    <!-- Breadcrumb -->
+                    <div x-show="currentRoot" class="flex items-center gap-2 text-sm text-gray-600">
+                        <i class="fas fa-folder text-gray-400"></i>
+                        <span x-text="currentRoot"></span>
+                        <template x-for="(part, index) in pathParts" :key="index">
+                            <span>
+                                <i class="fas fa-chevron-right text-gray-400 mx-1"></i>
+                                <a href="#" @click.prevent="navigateToPath(index)" 
+                                   class="hover:text-blue-600 transition-colors" x-text="part"></a>
+                            </span>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File listing -->
+            <div class="bg-white rounded-lg shadow-sm overflow-hidden"
+                 @drop.prevent="handleDrop"
+                 @dragover.prevent="$el.classList.add('drag-over')"
+                 @dragleave.prevent="$el.classList.remove('drag-over')">
+                
+                <!-- Loading state -->
+                <div x-show="loading" class="p-8 text-center text-gray-500">
+                    <i class="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                    <p>Loading files...</p>
+                </div>
+
+                <!-- Error state -->
+                <div x-show="error && !loading" class="p-8 text-center text-red-500">
+                    <i class="fas fa-exclamation-triangle text-2xl mb-2"></i>
+                    <p x-text="error"></p>
+                    <button @click="loadFiles()" class="mt-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                        Retry
+                    </button>
+                </div>
+
+                <!-- File table -->
+                <div x-show="!loading && !error && files.length > 0">
+                    <!-- Toolbar -->
+                    <div class="border-b border-gray-200 p-4 bg-gray-50 flex justify-between items-center">
+                        <div class="flex items-center gap-4">
+                            <span class="text-sm text-gray-600" x-text="`${files.length} items`"></span>
+                            <div x-show="selectedFiles.length > 0" class="text-sm text-blue-600">
+                                <span x-text="`${selectedFiles.length} selected`"></span>
+                                <button @click="deleteSelected()" 
+                                        class="ml-3 text-red-600 hover:text-red-700 font-medium">
+                                    <i class="fas fa-trash"></i> Delete
+                                </button>
+                            </div>
+                        </div>
+                        <button @click="selectAll()" class="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                            Select All
+                        </button>
+                    </div>
+
+                    <!-- File list -->
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50 border-b border-gray-200">
+                                <tr class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                    <th class="px-4 py-3 w-8">
+                                        <input type="checkbox" @change="toggleSelectAll()" 
+                                               class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                    </th>
+                                    <th class="px-4 py-3">Name</th>
+                                    <th class="px-4 py-3 hidden md:table-cell">Size</th>
+                                    <th class="px-4 py-3 hidden lg:table-cell">Modified</th>
+                                    <th class="px-4 py-3 w-32">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-200">
+                                <!-- Parent directory -->
+                                <tr x-show="currentPath !== ''" class="file-row hover:bg-gray-50 transition-colors">
+                                    <td class="px-4 py-3"></td>
+                                    <td class="px-4 py-3">
+                                        <a href="#" @click.prevent="navigateUp()" 
+                                           class="flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-colors">
+                                            <i class="fas fa-level-up-alt text-gray-400"></i>
+                                            <span>..</span>
+                                        </a>
+                                    </td>
+                                    <td class="px-4 py-3 hidden md:table-cell text-gray-500">-</td>
+                                    <td class="px-4 py-3 hidden lg:table-cell text-gray-500">-</td>
+                                    <td class="px-4 py-3"></td>
+                                </tr>
+
+                                <!-- Files and folders -->
+                                <template x-for="file in files" :key="file.path">
+                                    <tr class="file-row hover:bg-gray-50 transition-colors">
+                                        <td class="px-4 py-3">
+                                            <input type="checkbox" 
+                                                   :value="file.path"
+                                                   x-model="selectedFiles"
+                                                   class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <div class="flex items-center gap-2">
+                                                <i :class="file.is_dir ? 'fas fa-folder text-yellow-500' : 'fas fa-file text-gray-400'"></i>
+                                                <a href="#" 
+                                                   @click.prevent="file.is_dir ? navigateToFolder(file.path) : downloadFile(file.path)"
+                                                   class="text-blue-600 hover:text-blue-800 transition-colors font-medium"
+                                                   x-text="file.name"></a>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-3 hidden md:table-cell text-sm text-gray-600" 
+                                            x-text="file.is_dir ? '-' : formatFileSize(file.size)"></td>
+                                        <td class="px-4 py-3 hidden lg:table-cell text-sm text-gray-600" 
+                                            x-text="formatDate(file.modified)"></td>
+                                        <td class="px-4 py-3">
+                                            <div class="flex gap-1">
+                                                <button @click="renameFile(file)" 
+                                                        class="p-1 text-gray-400 hover:text-blue-600 transition-colors"
+                                                        title="Rename">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                <button @click="deleteFile(file.path)" 
+                                                        class="p-1 text-gray-400 hover:text-red-600 transition-colors"
+                                                        title="Delete">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </template>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Empty state -->
+                <div x-show="!loading && !error && files.length === 0 && currentRoot" class="p-8 text-center text-gray-500">
+                    <i class="fas fa-folder-open text-4xl mb-4 text-gray-300"></i>
+                    <p class="text-lg font-medium mb-2">This folder is empty</p>
+                    <p class="text-sm">Upload files or create folders to get started</p>
+                </div>
+            </div>
+        {% endif %}
+
+        <!-- Upload Modal -->
+        <div x-show="showUpload" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-lg max-w-md w-full p-6" @click.away="showUpload = false">
+                <h3 class="text-lg font-semibold mb-4">Upload Files</h3>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center"
+                     @drop.prevent="handleUploadDrop"
+                     @dragover.prevent="$el.classList.add('border-blue-500', 'bg-blue-50')"
+                     @dragleave.prevent="$el.classList.remove('border-blue-500', 'bg-blue-50')">
+                    <i class="fas fa-cloud-upload-alt text-3xl text-gray-400 mb-2"></i>
+                    <p class="text-gray-600 mb-2">Drop files here or click to select</p>
+                    <input type="file" multiple @change="handleFileSelect" class="hidden" x-ref="fileInput">
+                    <button @click="$refs.fileInput.click()" 
+                            class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
+                        Select Files
+                    </button>
+                </div>
+                <div x-show="uploadFiles.length > 0" class="mt-4">
+                    <h4 class="font-medium mb-2">Selected Files:</h4>
+                    <template x-for="file in uploadFiles" :key="file.name">
+                        <div class="flex justify-between items-center py-1 text-sm">
+                            <span x-text="file.name" class="truncate"></span>
+                            <span x-text="formatFileSize(file.size)" class="text-gray-500 ml-2"></span>
+                        </div>
+                    </template>
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button @click="showUpload = false" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
+                        Cancel
+                    </button>
+                    <button @click="uploadFiles.length > 0 && uploadSelectedFiles()" 
+                            :disabled="uploadFiles.length === 0 || uploading"
+                            class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        <span x-show="!uploading">Upload</span>
+                        <span x-show="uploading">Uploading...</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Folder Modal -->
+        <div x-show="showNewFolder" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-lg max-w-md w-full p-6" @click.away="showNewFolder = false">
+                <h3 class="text-lg font-semibold mb-4">Create New Folder</h3>
+                <input type="text" x-model="newFolderName" placeholder="Folder name" 
+                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       @keyup.enter="createFolder()">
+                <div class="flex justify-end gap-3 mt-6">
+                    <button @click="showNewFolder = false" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
+                        Cancel
+                    </button>
+                    <button @click="createFolder()" 
+                            :disabled="!newFolderName.trim()"
+                            class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors">
+                        Create
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Text Share Modal -->
+        <div x-show="showTextShare" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-lg max-w-2xl w-full p-6" @click.away="showTextShare = false">
+                <h3 class="text-lg font-semibold mb-4">Share Text</h3>
+                <textarea x-model="shareText" placeholder="Enter text to share..." 
+                          class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32 resize-none"></textarea>
+                <div x-show="shareUrl" class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p class="text-sm text-green-800 mb-2">Share URL created:</p>
+                    <div class="flex items-center gap-2">
+                        <input type="text" :value="shareUrl" readonly 
+                               class="flex-1 bg-white border border-green-300 rounded px-2 py-1 text-sm">
+                        <button @click="copyToClipboard(shareUrl)" 
+                                class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">
+                            Copy
+                        </button>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-3 mt-6">
+                    <button @click="showTextShare = false" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
+                        Cancel
+                    </button>
+                    <button @click="createTextShare()" 
+                            :disabled="!shareText.trim()"
+                            class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors">
+                        Create Share
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rename Modal -->
+        <div x-show="showRename" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-lg max-w-md w-full p-6" @click.away="showRename = false">
+                <h3 class="text-lg font-semibold mb-4">Rename</h3>
+                <input type="text" x-model="renameValue" placeholder="New name" 
+                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                       @keyup.enter="confirmRename()">
+                <div class="flex justify-end gap-3 mt-6">
+                    <button @click="showRename = false" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
+                        Cancel
+                    </button>
+                    <button @click="confirmRename()" 
+                            :disabled="!renameValue.trim()"
+                            class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                        Rename
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function fileManager() {
+            return {
+                // State
+                currentRoot: '',
+                currentPath: '',
+                files: [],
+                selectedFiles: [],
+                loading: false,
+                error: null,
+                
+                // Modals
+                showUpload: false,
+                showNewFolder: false,
+                showTextShare: false,
+                showRename: false,
+                
+                // Form data
+                uploadFiles: [],
+                newFolderName: '',
+                shareText: '',
+                shareUrl: '',
+                renameValue: '',
+                renameTarget: null,
+                uploading: false,
+
+                // Computed
+                get pathParts() {
+                    return this.currentPath ? this.currentPath.split('/').filter(p => p) : [];
+                },
+
+                // Methods
+                async loadFiles() {
+                    if (!this.currentRoot) return;
+                    
+                    this.loading = true;
+                    this.error = null;
+                    
+                    try {
+                        const response = await fetch(`/api/list?root=${encodeURIComponent(this.currentRoot)}&path=${encodeURIComponent(this.currentPath)}`);
+                        const data = await response.json();
+                        
+                        if (data.code === 0) {
+                            this.files = data.data.files;
+                        } else {
+                            this.error = data.msg;
+                        }
+                    } catch (e) {
+                        this.error = 'Failed to load files: ' + e.message;
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                navigateToFolder(path) {
+                    this.currentPath = path;
+                    this.selectedFiles = [];
+                    this.loadFiles();
+                },
+
+                navigateUp() {
+                    const parts = this.pathParts;
+                    parts.pop();
+                    this.currentPath = parts.join('/');
+                    this.selectedFiles = [];
+                    this.loadFiles();
+                },
+
+                navigateToPath(index) {
+                    const parts = this.pathParts.slice(0, index + 1);
+                    this.currentPath = parts.join('/');
+                    this.selectedFiles = [];
+                    this.loadFiles();
+                },
+
+                downloadFile(path) {
+                    const url = `/api/download?root=${encodeURIComponent(this.currentRoot)}&path=${encodeURIComponent(path)}`;
+                    window.open(url, '_blank');
+                },
+
+                async deleteFile(path) {
+                    if (!confirm('Are you sure you want to delete this item?')) return;
+                    
+                    try {
+                        const response = await fetch('/api/delete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                root: this.currentRoot,
+                                paths: [path]
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        if (data.code === 0) {
+                            this.loadFiles();
+                        } else {
+                            alert('Delete failed: ' + data.msg);
+                        }
+                    } catch (e) {
+                        alert('Delete failed: ' + e.message);
+                    }
+                },
+
+                async deleteSelected() {
+                    if (this.selectedFiles.length === 0) return;
+                    if (!confirm(`Delete ${this.selectedFiles.length} selected items?`)) return;
+                    
+                    try {
+                        const response = await fetch('/api/delete', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                root: this.currentRoot,
+                                paths: this.selectedFiles
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        if (data.code === 0) {
+                            this.selectedFiles = [];
+                            this.loadFiles();
+                        } else {
+                            alert('Delete failed: ' + data.msg);
+                        }
+                    } catch (e) {
+                        alert('Delete failed: ' + e.message);
+                    }
+                },
+
+                renameFile(file) {
+                    this.renameTarget = file;
+                    this.renameValue = file.name;
+                    this.showRename = true;
+                },
+
+                async confirmRename() {
+                    if (!this.renameTarget || !this.renameValue.trim()) return;
+                    
+                    try {
+                        const response = await fetch('/api/rename', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                root: this.currentRoot,
+                                path: this.renameTarget.path,
+                                newName: this.renameValue.trim()
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        if (data.code === 0) {
+                            this.showRename = false;
+                            this.loadFiles();
+                        } else {
+                            alert('Rename failed: ' + data.msg);
+                        }
+                    } catch (e) {
+                        alert('Rename failed: ' + e.message);
+                    }
+                },
+
+                async createFolder() {
+                    if (!this.newFolderName.trim()) return;
+                    
+                    try {
+                        const response = await fetch('/api/mkdir', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                root: this.currentRoot,
+                                path: this.currentPath ? `${this.currentPath}/${this.newFolderName}` : this.newFolderName
+                            })
+                        });
+                        
+                        const data = await response.json();
+                        if (data.code === 0) {
+                            this.showNewFolder = false;
+                            this.newFolderName = '';
+                            this.loadFiles();
+                        } else {
+                            alert('Create folder failed: ' + data.msg);
+                        }
+                    } catch (e) {
+                        alert('Create folder failed: ' + e.message);
+                    }
+                },
+
+                handleFileSelect(event) {
+                    this.uploadFiles = Array.from(event.target.files);
+                },
+
+                handleUploadDrop(event) {
+                    event.target.classList.remove('border-blue-500', 'bg-blue-50');
+                    this.uploadFiles = Array.from(event.dataTransfer.files);
+                },
+
+                handleDrop(event) {
+                    event.target.classList.remove('drag-over');
+                    this.uploadFiles = Array.from(event.dataTransfer.files);
+                    this.showUpload = true;
+                },
+
+                async uploadSelectedFiles() {
+                    if (this.uploadFiles.length === 0) return;
+                    
+                    this.uploading = true;
+                    
+                    try {
+                        for (const file of this.uploadFiles) {
+                            const formData = new FormData();
+                            formData.append('root', this.currentRoot);
+                            formData.append('path', this.currentPath);
+                            formData.append('file', file);
+                            
+                            const response = await fetch('/api/upload', {
+                                method: 'POST',
+                                body: formData
+                            });
+                            
+                            const data = await response.json();
+                            if (data.code !== 0) {
+                                alert(`Upload failed for ${file.name}: ${data.msg}`);
+                            }
+                        }
+                        
+                        this.showUpload = false;
+                        this.uploadFiles = [];
+                        this.loadFiles();
+                        
+                    } catch (e) {
+                        alert('Upload failed: ' + e.message);
+                    } finally {
+                        this.uploading = false;
+                    }
+                },
+
+                async createTextShare() {
+                    if (!this.shareText.trim()) return;
+                    
+                    try {
+                        const response = await fetch('/api/textshare', {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({text: this.shareText})
+                        });
+                        
+                        const data = await response.json();
+                        if (data.code === 0) {
+                            this.shareUrl = window.location.origin + data.data.url;
+                        } else {
+                            alert('Text share failed: ' + data.msg);
+                        }
+                    } catch (e) {
+                        alert('Text share failed: ' + e.message);
+                    }
+                },
+
+                selectAll() {
+                    this.selectedFiles = this.files.map(f => f.path);
+                },
+
+                toggleSelectAll() {
+                    if (this.selectedFiles.length === this.files.length) {
+                        this.selectedFiles = [];
+                    } else {
+                        this.selectAll();
+                    }
+                },
+
+                copyToClipboard(text) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        alert('Copied to clipboard!');
+                    });
+                },
+
+                formatFileSize(bytes) {
+                    if (bytes === 0) return '0 B';
+                    const k = 1024;
+                    const sizes = ['B', 'KB', 'MB', 'GB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                },
+
+                formatDate(timestamp) {
+                    return new Date(timestamp * 1000).toLocaleDateString() + ' ' + 
+                           new Date(timestamp * 1000).toLocaleTimeString();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
