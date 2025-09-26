@@ -463,6 +463,10 @@
                      class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4"
                      x-text="controlPanelError"></div>
 
+                <div x-show="controlPanelNotice"
+                     class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4"
+                     x-text="controlPanelNotice"></div>
+
                 <div x-show="!controlPanelLoading && controlPanelData" class="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
                     <section class="bg-gray-50 border border-gray-200 rounded-lg p-4">
                         <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
@@ -560,6 +564,7 @@
                                         <th class="px-3 py-2 text-left font-medium text-gray-600">Path</th>
                                         <th class="px-3 py-2 text-left font-medium text-gray-600">Status</th>
                                         <th class="px-3 py-2 text-left font-medium text-gray-600">Disk</th>
+                                        <th class="px-3 py-2 text-left font-medium text-gray-600">Storage</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
@@ -600,10 +605,97 @@
                                                 </template>
                                                 <p x-show="!share.disk" class="text-gray-400">Disk usage unavailable</p>
                                             </td>
+                                            <td class="px-3 py-2 text-xs text-gray-700 space-y-2">
+                                                <div>
+                                                    <span class="font-medium text-gray-700">Used:</span>
+                                                    <span x-text="share.usage?.display || '0 B'"></span>
+                                                </div>
+                                                <template x-if="share.quota_enabled">
+                                                    <div class="space-y-1">
+                                                        <div>
+                                                            <span class="font-medium text-gray-700">Limit:</span>
+                                                            <span x-text="share.quota?.limit_display || '—'"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="font-medium text-gray-700">Remaining:</span>
+                                                            <span x-text="share.quota?.remaining_display || '0 B'"></span>
+                                                        </div>
+                                                        <div>
+                                                            <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                                                                <div class="h-2" :class="share.quota?.over ? 'bg-red-500' : 'bg-blue-600'"
+                                                                     :style="`width: ${Math.min(share.quota?.percent_used ?? 0, 100)}%`"></div>
+                                                            </div>
+                                                            <div class="text-[10px] text-gray-500 mt-1">
+                                                                <span x-text="(share.quota?.percent_used ?? 0).toFixed(1)"></span>% used
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                                <p x-show="!share.quota_enabled" class="text-gray-400">No quota limit</p>
+                                                <div class="flex flex-wrap gap-2 pt-1">
+                                                    <button @click="promptShareQuota(share)"
+                                                            class="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition-colors">
+                                                        Set quota
+                                                    </button>
+                                                    <button x-show="share.quota_enabled"
+                                                            @click="clearShareQuota(share)"
+                                                            class="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors">
+                                                        Remove limit
+                                                    </button>
+                                                </div>
+                                            </td>
                                         </tr>
                                     </template>
                                     <tr x-show="(controlPanelData?.shares || []).length === 0">
-                                        <td colspan="4" class="px-3 py-4 text-center text-gray-500">No shares configured.</td>
+                                        <td colspan="5" class="px-3 py-4 text-center text-gray-500">No shares configured.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="bg-white border border-gray-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-lg font-semibold text-gray-800">User Accounts</h4>
+                            <span class="text-xs text-gray-500"
+                                  x-text="`Total: ${(controlPanelData?.users || []).length}`"></span>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3">
+                            Users registered via the control panel can be removed from here. Accounts defined in
+                            the configuration file are read-only.
+                        </p>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full text-sm">
+                                <thead>
+                                    <tr class="text-left text-gray-600 border-b border-gray-200">
+                                        <th class="px-3 py-2">Username</th>
+                                        <th class="px-3 py-2">Source</th>
+                                        <th class="px-3 py-2">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <template x-for="user in (controlPanelData?.users || [])" :key="user.name">
+                                        <tr>
+                                            <td class="px-3 py-2 font-medium text-gray-800" x-text="user.name"></td>
+                                            <td class="px-3 py-2">
+                                                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs"
+                                                      :class="user.dynamic ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'">
+                                                    <i :class="user.dynamic ? 'fas fa-user-plus' : 'fas fa-file-lines'"></i>
+                                                    <span x-text="user.dynamic ? 'Dynamic' : 'Config file'"></span>
+                                                </span>
+                                            </td>
+                                            <td class="px-3 py-2">
+                                                <button x-show="user.dynamic"
+                                                        @click="removeUser(user.name)"
+                                                        class="text-xs px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition-colors">
+                                                    Remove
+                                                </button>
+                                                <span x-show="!user.dynamic" class="text-xs text-gray-400">Managed externally</span>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <tr x-show="!(controlPanelData?.users || []).length">
+                                        <td colspan="3" class="px-3 py-4 text-center text-gray-500">No users available.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -716,6 +808,7 @@
                 showControlPanel: false,
                 controlPanelLoading: false,
                 controlPanelError: '',
+                controlPanelNotice: '',
                 controlPanelData: null,
                 controlPanelFetchedAt: null,
 
@@ -944,8 +1037,101 @@
                     await this.loadControlPanel(true);
                 },
 
+                async updateShareQuota(name, payload) {
+                    if (!this.ensureAuthenticated(false)) {
+                        return;
+                    }
+                    this.controlPanelError = '';
+                    this.controlPanelNotice = '';
+
+                    try {
+                        const response = await fetch(`/api/admin/shares/${encodeURIComponent(name)}/quota`, {
+                            method: 'PUT',
+                            headers: this.buildHeaders({ 'Content-Type': 'application/json' }),
+                            body: JSON.stringify(payload || {})
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return;
+                        }
+
+                        const payloadData = this.parseApiResponse(await response.json());
+                        if (response.ok && payloadData.code === 0) {
+                            this.controlPanelNotice = `Quota updated for ${name}.`;
+                            await this.refreshControlPanel();
+                        } else {
+                            this.controlPanelError = payloadData?.msg || 'Failed to update share quota.';
+                        }
+                    } catch (e) {
+                        this.controlPanelError = 'Failed to update share quota: ' + e.message;
+                    }
+                },
+
+                async promptShareQuota(share) {
+                    if (!share || !share.name) {
+                        return;
+                    }
+                    const current = share.quota?.limit_display || '';
+                    const value = window.prompt('Enter a quota (e.g. 10GB). Leave blank to remove the limit.', current);
+                    if (value === null) {
+                        return;
+                    }
+                    const trimmed = value.trim();
+                    if (!trimmed) {
+                        await this.clearShareQuota(share);
+                        return;
+                    }
+                    await this.updateShareQuota(share.name, { quota: trimmed });
+                },
+
+                async clearShareQuota(share) {
+                    if (!share || !share.name) {
+                        return;
+                    }
+                    if (!window.confirm(`Remove the quota limit for "${share.name}"?`)) {
+                        return;
+                    }
+                    await this.updateShareQuota(share.name, {});
+                },
+
+                async removeUser(username) {
+                    if (!username) {
+                        return;
+                    }
+                    if (!window.confirm(`Remove user "${username}"?`)) {
+                        return;
+                    }
+
+                    this.controlPanelError = '';
+                    this.controlPanelNotice = '';
+
+                    try {
+                        const response = await fetch(`/api/admin/users/${encodeURIComponent(username)}`, {
+                            method: 'DELETE',
+                            headers: this.buildHeaders()
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return;
+                        }
+
+                        const payload = this.parseApiResponse(await response.json());
+                        if (response.ok && payload.code === 0) {
+                            this.controlPanelNotice = `Removed user ${username}.`;
+                            await this.refreshControlPanel();
+                        } else {
+                            this.controlPanelError = payload?.msg || 'Failed to remove user.';
+                        }
+                    } catch (e) {
+                        this.controlPanelError = 'Failed to remove user: ' + e.message;
+                    }
+                },
+
                 closeControlPanel() {
                     this.showControlPanel = false;
+                    this.controlPanelNotice = '';
                 },
 
                 parseApiResponse(data) {

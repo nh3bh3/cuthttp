@@ -7,7 +7,7 @@ import time
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Union
 import logging
 
 from .models import HttpRange, MIME_TYPES, DEFAULT_MIME_TYPE
@@ -45,6 +45,54 @@ def format_file_size(size_bytes: int) -> str:
         return f"{int(size)} {size_names[i]}"
     else:
         return f"{size:.1f} {size_names[i]}"
+
+
+def parse_size_to_bytes(value: Union[str, int, float, None]) -> Optional[int]:
+    """Parse a human readable size string into bytes.
+
+    Accepts values such as ``"10GB"``, ``"512 mb"`` or ``2048``. ``None``
+    results in ``None``. Non-positive values are normalised to ``None`` which
+    indicates "unlimited".
+    """
+
+    if value is None:
+        return None
+
+    if isinstance(value, bool):  # bool is subclass of int, exclude explicitly
+        raise ValueError("Boolean values are not valid size specifiers")
+
+    if isinstance(value, (int, float)):
+        size = int(value)
+        return size if size > 0 else None
+
+    if not isinstance(value, str):
+        raise ValueError(f"Unsupported size value type: {type(value)!r}")
+
+    text = value.strip().lower()
+    if not text:
+        return None
+
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*([kmgtp]?b)?", text)
+    if not match:
+        raise ValueError(f"Invalid size string: {value!r}")
+
+    number = float(match.group(1))
+    unit = (match.group(2) or "b").lower()
+
+    multipliers = {
+        "b": 1,
+        "kb": 1024,
+        "mb": 1024 ** 2,
+        "gb": 1024 ** 3,
+        "tb": 1024 ** 4,
+        "pb": 1024 ** 5,
+    }
+
+    if unit not in multipliers:
+        raise ValueError(f"Unsupported size unit: {unit}")
+
+    bytes_value = int(number * multipliers[unit])
+    return bytes_value if bytes_value > 0 else None
 
 
 def format_timestamp(timestamp: float, format_str: str = "%Y-%m-%d %H:%M:%S") -> str:

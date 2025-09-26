@@ -149,3 +149,38 @@ def add_registered_user(
     )
 
     return user, [rule]
+
+
+def list_registered_usernames() -> List[str]:
+    """Return the list of dynamically registered usernames."""
+
+    store = _load_store()
+    names: List[str] = []
+    for entry in store.get("users", []):
+        name = entry.get("name")
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names
+
+
+def remove_registered_user(username: str) -> bool:
+    """Remove a dynamically registered user. Returns ``True`` if removed."""
+
+    store = _load_store()
+    users = store.get("users", [])
+    if not users:
+        return False
+
+    username_lower = username.lower()
+    filtered = [
+        entry
+        for entry in users
+        if str(entry.get("name", "")).lower() != username_lower
+    ]
+
+    if len(filtered) == len(users):
+        return False
+
+    store["users"] = filtered
+    _atomic_write(store)
+    return True

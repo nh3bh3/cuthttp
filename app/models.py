@@ -77,12 +77,18 @@ class UserInfo:
 @dataclass
 class ShareInfo:
     """Share configuration"""
+
     name: str
     path: Path
-    
+    quota_bytes: Optional[int] = None
+
     def __post_init__(self):
         if isinstance(self.path, str):
             self.path = Path(self.path).resolve()
+
+        if self.quota_bytes is not None and self.quota_bytes <= 0:
+            # Normalise non-positive values to unlimited
+            self.quota_bytes = None
 
 
 @dataclass
