@@ -159,11 +159,22 @@ class ConfigManager:
         
         # UI
         ui_data = data.get('ui', {})
+        max_upload_size = ui_data.get('maxUploadSize')
+        if max_upload_size is not None:
+            try:
+                max_upload_size = int(max_upload_size)
+            except (TypeError, ValueError):
+                logger.warning("Invalid maxUploadSize value; ignoring limit")
+                max_upload_size = None
+            else:
+                if max_upload_size <= 0:
+                    max_upload_size = None
+
         ui = UiConfig(
             brand=ui_data.get('brand', 'chfs-py'),
             title=ui_data.get('title', 'chfs-py File Server'),
             textShareDir=ui_data.get('textShareDir', ''),
-            maxUploadSize=ui_data.get('maxUploadSize', 104857600),
+            maxUploadSize=max_upload_size,
             language=ui_data.get('language', 'en')
         )
         

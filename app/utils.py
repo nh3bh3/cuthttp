@@ -1,6 +1,4 @@
-"""
-Utility functions for chfs-py
-"""
+"""Utility functions for chfs-py."""
 
 import hashlib
 import mimetypes

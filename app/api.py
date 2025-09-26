@@ -6,18 +6,15 @@ import logging
 import time
 from pathlib import Path
 from typing import List, Optional
+
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, Depends
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from .models import ApiResponse, ResponseCode, FileInfo, TextShare
 from .auth import get_current_user, UserInfo, hash_password
 from .rules import check_api_access, get_accessible_roots
-from .fs import (
-    list_directory, create_directory, delete_file_or_directory,
-    rename_file_or_directory, save_uploaded_file, open_file_for_download,
-    write_text_file, FileSystemError, PathTraversalError
-)
+from .storage_server import storage_server, FileSystemError
 from .utils import parse_http_range, generate_short_id, create_response_headers
 from .metrics import upload_context, download_context
 from .config import get_config, get_user_by_name
@@ -31,6 +28,27 @@ api_router = APIRouter(prefix="/api", tags=["api"])
 
 # Text shares storage (in-memory for simplicity)
 text_shares = {}
+
+
+# Request models
+class MkdirRequest(BaseModel):
+    root: str
+    path: str
+
+
+class RenameRequest(BaseModel):
+    root: str
+    path: str
+    newName: str
+
+
+class DeleteRequest(BaseModel):
+    root: str
+    paths: List[str]
+
+
+class TextShareRequest(BaseModel):
+    text: str
 
 
 class RegisterRequest(BaseModel):
@@ -155,33 +173,6 @@ async def register_user(register_req: RegisterRequest):
     ).to_dict()
 
 
-# Request models
-class MkdirRequest(BaseModel):
-    root: str
-    path: str
-
-
-class RenameRequest(BaseModel):
-    root: str
-    path: str
-    newName: str
-
-
-class DeleteRequest(BaseModel):
-    root: str
-    paths: List[str]
-
-
-class TextShareRequest(BaseModel):
-    text: str
-
-
-class RegisterRequest(BaseModel):
-    username: str
-    password: str
-    confirmPassword: str
-
-
 @api_router.get("/list")
 async def list_files(
     request: Request,
@@ -206,7 +197,7 @@ async def list_files(
         )
     
     try:
-        files = await list_directory(root, path)
+        files = await storage_server.list_files(root, path)
         
         return ApiResponse(
             code=ResponseCode.SUCCESS.value,
@@ -256,8 +247,12 @@ async def upload_file(
     # Check file size
     config = get_config()
     max_size = config.ui.maxUploadSize
-    
-    if file.size and file.size > max_size:
+
+    if (
+        max_size is not None
+        and file.size is not None
+        and file.size > max_size
+    ):
         raise HTTPException(
             status_code=413,
             detail=ApiResponse(
@@ -266,11 +261,15 @@ async def upload_file(
                 data=None
             ).to_dict()
         )
-    
+
     try:
         with upload_context() as counter:
-            bytes_written = await save_uploaded_file(
-                root, path, file.filename or "unnamed", file, max_size
+            bytes_written = await storage_server.upload_file(
+                root,
+                path,
+                file.filename or "unnamed",
+                file,
+                max_size=max_size,
             )
             counter.add_bytes(bytes_written)
         
@@ -318,7 +317,7 @@ async def make_directory(
         )
     
     try:
-        await create_directory(mkdir_req.root, mkdir_req.path)
+        await storage_server.make_directory(mkdir_req.root, mkdir_req.path)
         
         return ApiResponse(
             code=ResponseCode.SUCCESS.value,
@@ -363,7 +362,9 @@ async def rename_item(
         )
     
     try:
-        await rename_file_or_directory(rename_req.root, rename_req.path, rename_req.newName)
+        await storage_server.rename(
+            rename_req.root, rename_req.path, rename_req.newName
+        )
         
         return ApiResponse(
             code=ResponseCode.SUCCESS.value,
@@ -407,7 +408,7 @@ async def delete_items(
             continue
         
         try:
-            await delete_file_or_directory(delete_req.root, path)
+            await storage_server.delete(delete_req.root, path)
             deleted_paths.append(path)
             
         except FileSystemError as e:
@@ -453,7 +454,7 @@ async def download_file(
         http_range = parse_http_range(range_header) if range_header else None
         
         # Open file for download
-        file_generator, start, end, total_size = await open_file_for_download(
+        file_generator, start, end, total_size = await storage_server.open_for_download(
             root, path, http_range
         )
         
@@ -551,7 +552,9 @@ async def create_text_share(
                 ))
                 filename = f"{share_id}.txt"
                 
-                await write_text_file(root_name, f"{rel_path}/{filename}", text_req.text)
+                await storage_server.write_text(
+                    root_name, f"{rel_path}/{filename}", text_req.text
+                )
                 
         except Exception as e:
             logger.warning(f"Failed to save text share to file: {e}")

@@ -143,7 +143,7 @@ class UiConfig:
     brand: str = "chfs-py"
     title: str = "chfs-py File Server"
     textShareDir: str = ""
-    maxUploadSize: int = 104857600  # 100MB
+    maxUploadSize: Optional[int] = None
     language: str = "en"
 
 

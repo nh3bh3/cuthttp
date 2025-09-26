@@ -47,11 +47,14 @@ echo ✅ Python 环境检查通过
 echo.
 
 rem 快速安装依赖
+set "PIP_COMMON_OPTS=--quiet --disable-pip-version-check"
+set "REQUIRED_PACKAGES=fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions"
+
 echo 正在安装依赖包...
-pip install fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions --quiet --disable-pip-version-check
+pip install %REQUIRED_PACKAGES% %PIP_COMMON_OPTS%
 if errorlevel 1 (
     echo 依赖安装失败，尝试使用国内镜像源...
-    pip install fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet --disable-pip-version-check
+    pip install %REQUIRED_PACKAGES% %PIP_COMMON_OPTS% -i https://pypi.tuna.tsinghua.edu.cn/simple
 )
 
 rem 创建基本目录
@@ -138,19 +141,58 @@ echo 登录账户：admin / 123456
 
 echo 数据目录：%CD%\data
 
-echo 提示：按 Ctrl+C 可停止服务器
-
 echo ===============================================================
 echo.
 
-echo 正在打开浏览器...
-timeout /t 3 /nobreak >nul
-start "" http://127.0.0.1:8082
+echo 请选择需要执行的操作：
+echo   [1] 启动服务器端（当前窗口）
+echo   [2] 启动用户端（仅打开浏览器）
+echo   [3] 分别启动服务器端（新窗口）和用户端
+echo   [Q] 退出脚本
+echo.
 
-rem 启动服务器
+:menu
+set "choice="
+set /p choice=请输入选项 [1/2/3/Q]：
+if /I "%choice%"=="1" goto run_server
+if /I "%choice%"=="2" goto open_client
+if /I "%choice%"=="3" goto start_both
+if /I "%choice%"=="Q" goto goodbye
+echo.
+echo 无效的选项，请重新输入。
+echo.
+goto menu
+
+:run_server
+echo.
+echo 正在启动服务器端...
 set "CHFS_CONFIG=%CD%\chfs-simple.yaml"
 python -m app.main --config chfs-simple.yaml
-
 echo.
 echo [92m服务器已停止，感谢使用！[0m
 pause
+goto :EOF
+
+:open_client
+echo.
+echo 正在打开浏览器...
+start "" http://127.0.0.1:8082
+echo 已启动用户端（浏览器）。
+pause
+goto :EOF
+
+:start_both
+echo.
+echo 正在新窗口启动服务器端，并打开用户端...
+start "chfs-py 服务器" cmd /k "set CHFS_CONFIG=%CD%\chfs-simple.yaml && python -m app.main --config chfs-simple.yaml"
+timeout /t 2 /nobreak >nul
+start "" http://127.0.0.1:8082
+echo 服务器端和用户端已分别启动。
+pause
+goto :EOF
+
+:goodbye
+echo.
+echo 已退出脚本。
+goto :EOF
+
