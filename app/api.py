@@ -7,7 +7,6 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
-import time
 from pathlib import Path
 from typing import List, Optional
 
@@ -15,13 +14,13 @@ from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, D
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from pydantic import BaseModel
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
-from .models import ApiResponse, ResponseCode, FileInfo, TextShare
+from .models import ApiResponse, ResponseCode, FileInfo
 from .auth import get_current_user, UserInfo, hash_password
 from .rules import check_api_access, get_accessible_roots
 from .storage_server import storage_server, FileSystemError
-from .utils import parse_http_range, generate_short_id, create_response_headers
+from .utils import parse_http_range, create_response_headers
 from .metrics import upload_context, download_context
 from .config import get_config, get_user_by_name, get_share_by_name, set_share_quota, config_manager
 from .ipfilter import get_client_ip
@@ -30,15 +29,12 @@ from .control_panel import build_control_panel_state
 from .quota import quota_manager
 from .utils import format_file_size, parse_size_to_bytes
 from .direct_transfer import direct_transfer_store, DirectTransferError
+from .server_store import set_custom_urls
 
 logger = logging.getLogger(__name__)
 
 # API router
 api_router = APIRouter(prefix="/api", tags=["api"])
-
-# Text shares storage (in-memory for simplicity)
-text_shares = {}
-
 
 # Request models
 class MkdirRequest(BaseModel):
@@ -57,10 +53,6 @@ class DeleteRequest(BaseModel):
     paths: List[str]
 
 
-class TextShareRequest(BaseModel):
-    text: str
-
-
 class RegisterRequest(BaseModel):
     username: str
     password: str
@@ -70,6 +62,10 @@ class RegisterRequest(BaseModel):
 class ShareQuotaUpdate(BaseModel):
     quota: Optional[str] = None
     quotaBytes: Optional[int] = None
+
+
+class ServerUrlUpdate(BaseModel):
+    urls: List[str]
 
 
 def _direct_transfer_http_exception(exc: DirectTransferError) -> HTTPException:
@@ -214,6 +210,45 @@ async def update_share_quota(
                 "quotaDisplay": quota_display,
             }
         },
+    ).to_dict()
+
+
+@api_router.put("/admin/server/custom-urls")
+async def update_server_custom_urls(
+    payload: ServerUrlUpdate,
+    user: UserInfo = Depends(require_local_admin),
+):
+    """Replace the list of custom URLs shown in the control panel."""
+
+    sanitized: List[str] = []
+    seen = set()
+
+    for entry in payload.urls or []:
+        trimmed = (entry or "").strip()
+        if not trimmed:
+            continue
+
+        parsed = urlparse(trimmed)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise HTTPException(
+                status_code=400,
+                detail=ApiResponse(
+                    code=ResponseCode.ERROR.value,
+                    msg=f"Invalid URL: {trimmed}",
+                    data=None,
+                ).to_dict(),
+            )
+
+        if trimmed not in seen:
+            sanitized.append(trimmed)
+            seen.add(trimmed)
+
+    stored = set_custom_urls(sanitized)
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="Server URLs updated",
+        data={"custom_urls": stored},
     ).to_dict()
 
 
@@ -885,75 +920,6 @@ async def download_direct_transfer(
         media_type=entry.content_type or "application/octet-stream",
         background=background,
     )
-
-
-@api_router.post("/textshare")
-async def create_text_share(
-    request: Request,
-    text_req: TextShareRequest,
-    user: UserInfo = Depends(get_current_user)
-):
-    """Create text share"""
-    
-    if not text_req.text.strip():
-        raise HTTPException(
-            status_code=400,
-            detail=ApiResponse(
-                code=ResponseCode.ERROR.value,
-                msg="Text content cannot be empty",
-                data=None
-            ).to_dict()
-        )
-    
-    # Generate short ID
-    share_id = generate_short_id(8)
-    
-    # Store text share
-    text_share = TextShare(
-        id=share_id,
-        text=text_req.text,
-        created=time.time()
-    )
-    text_shares[share_id] = text_share
-    
-    # Also save to file if configured
-    config = get_config()
-    if config.ui.textShareDir:
-        try:
-            # Find a share that contains the text share directory
-            text_dir_path = Path(config.ui.textShareDir)
-            root_name = None
-            
-            for share in config.shares:
-                try:
-                    text_dir_path.relative_to(share.path)
-                    root_name = share.name
-                    break
-                except ValueError:
-                    continue
-            
-            if root_name:
-                rel_path = str(text_dir_path.relative_to(
-                    next(s.path for s in config.shares if s.name == root_name)
-                ))
-                filename = f"{share_id}.txt"
-                
-                await storage_server.write_text(
-                    root_name, f"{rel_path}/{filename}", text_req.text
-                )
-                
-        except Exception as e:
-            logger.warning(f"Failed to save text share to file: {e}")
-    
-    return ApiResponse(
-        code=ResponseCode.SUCCESS.value,
-        msg="Text share created",
-        data={
-            "id": share_id,
-            "url": f"/t/{share_id}",
-            "created": text_share.created
-        }
-    ).to_dict()
 
 
 def setup_api_routes(app):
