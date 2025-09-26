@@ -75,43 +75,91 @@
                     <i class="fas fa-lock text-yellow-600"></i>
                     <div>
                         <h3 class="font-semibold text-yellow-800">Authentication Required</h3>
-                        <p class="text-yellow-700 text-sm mt-1">Please provide credentials to access the file server.</p>
+                        <p class="text-yellow-700 text-sm mt-1">
+                            Please sign in to continue or create an account below.
+                        </p>
                     </div>
                 </div>
             </div>
 
-            <!-- Login form -->
+            <!-- Login / Register forms -->
             <div class="bg-white rounded-lg shadow-sm p-6 mb-6">
-                <form class="space-y-5" @submit.prevent="performLogin()">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1" for="login-username">Username</label>
-                            <input id="login-username" x-ref="loginUsername" type="text" x-model="loginUsername" autocomplete="username"
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                   placeholder="Enter username" required>
+                <template x-if="!showRegister">
+                    <form class="space-y-5" @submit.prevent="performLogin()">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1" for="login-username">Username</label>
+                                <input id="login-username" x-ref="loginUsername" type="text" x-model="loginUsername" autocomplete="username"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       placeholder="Enter username" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1" for="login-password">Password</label>
+                                <input id="login-password" type="password" x-model="loginPassword" autocomplete="current-password"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       placeholder="Enter password" required>
+                            </div>
                         </div>
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-1" for="login-password">Password</label>
-                            <input id="login-password" type="password" x-model="loginPassword" autocomplete="current-password"
-                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                                   placeholder="Enter password" required>
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <label class="inline-flex items-center gap-2 text-sm text-gray-600">
+                                <input type="checkbox" x-model="rememberCredentials" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
+                                Remember credentials on this device
+                            </label>
+                            <div class="flex items-center gap-3">
+                                <button type="submit"
+                                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                    <span>Sign In</span>
+                                </button>
+                                <span class="text-xs text-gray-500 hidden sm:block">Default: admin / admin123</span>
+                            </div>
                         </div>
-                    </div>
-                    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                        <label class="inline-flex items-center gap-2 text-sm text-gray-600">
-                            <input type="checkbox" x-model="rememberCredentials" class="rounded border-gray-300 text-blue-600 focus:ring-blue-500">
-                            Remember credentials on this device
-                        </label>
-                        <div class="flex items-center gap-3">
-                            <button type="submit"
-                                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors">
-                                <span>Sign In</span>
+                        <p x-show="loginInfo" x-text="loginInfo" class="text-sm text-green-600"></p>
+                        <p x-show="loginError" x-text="loginError" class="text-sm text-red-600"></p>
+                        <p class="text-sm text-gray-600">
+                            Don't have an account?
+                            <button type="button" @click="switchToRegister()"
+                                    class="text-blue-600 hover:text-blue-700 font-medium">
+                                Create one now
                             </button>
-                            <span class="text-xs text-gray-500 hidden sm:block">Default: admin / admin123</span>
+                        </p>
+                    </form>
+                </template>
+
+                <template x-if="showRegister">
+                    <form class="space-y-5" @submit.prevent="performRegister()">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1" for="register-username">Username</label>
+                                <input id="register-username" x-ref="registerUsername" type="text" x-model="registerUsername" autocomplete="username"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       placeholder="Choose a username" required>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700 mb-1" for="register-password">Password</label>
+                                <input id="register-password" type="password" x-model="registerPassword" autocomplete="new-password"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       placeholder="At least 6 characters" required>
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="block text-sm font-medium text-gray-700 mb-1" for="register-confirm">Confirm Password</label>
+                                <input id="register-confirm" type="password" x-model="registerConfirm" autocomplete="new-password"
+                                       class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                       placeholder="Re-enter password" required>
+                            </div>
                         </div>
-                    </div>
-                    <p x-show="loginError" x-text="loginError" class="text-sm text-red-600"></p>
-                </form>
+                        <p x-show="registerError" x-text="registerError" class="text-sm text-red-600"></p>
+                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <button type="button" @click="switchToLogin()"
+                                    class="text-sm text-gray-600 hover:text-gray-800">
+                                Back to sign in
+                            </button>
+                            <button type="submit"
+                                    class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition-colors">
+                                Create Account
+                            </button>
+                        </div>
+                    </form>
+                </template>
             </div>
         </div>
 
@@ -392,6 +440,12 @@
                 loginPassword: '',
                 rememberCredentials: true,
                 loginError: '',
+                loginInfo: '',
+                showRegister: false,
+                registerUsername: '',
+                registerPassword: '',
+                registerConfirm: '',
+                registerError: '',
 
                 // File browser state
                 currentRoot: initialRoots.length > 0 ? initialRoots[0] : '',
@@ -464,6 +518,80 @@
                     });
                 },
 
+                switchToRegister() {
+                    this.showRegister = true;
+                    this.registerUsername = this.loginUsername || '';
+                    this.registerPassword = '';
+                    this.registerConfirm = '';
+                    this.registerError = '';
+                    this.loginError = '';
+                    this.loginInfo = '';
+                    this.$nextTick(() => {
+                        if (this.$refs.registerUsername) {
+                            this.$refs.registerUsername.focus();
+                        }
+                    });
+                },
+
+                switchToLogin(message = '') {
+                    this.showRegister = false;
+                    this.registerUsername = '';
+                    this.registerPassword = '';
+                    this.registerConfirm = '';
+                    this.registerError = '';
+                    if (message) {
+                        this.loginInfo = message;
+                        this.loginError = '';
+                    } else {
+                        this.loginInfo = '';
+                    }
+                    this.$nextTick(() => this.focusLogin());
+                },
+
+                async performRegister() {
+                    const username = (this.registerUsername || '').trim();
+                    this.registerError = '';
+                    this.loginInfo = '';
+                    if (!username || username.length < 3) {
+                        this.registerError = 'Username must be at least 3 characters.';
+                        return;
+                    }
+
+                    if (!this.registerPassword || this.registerPassword.length < 6) {
+                        this.registerError = 'Password must be at least 6 characters.';
+                        return;
+                    }
+
+                    if (this.registerPassword !== this.registerConfirm) {
+                        this.registerError = 'Passwords do not match.';
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/register', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                username,
+                                password: this.registerPassword,
+                                confirmPassword: this.registerConfirm,
+                            }),
+                        });
+
+                        const payload = this.parseApiResponse(await response.json());
+                        if (response.ok && payload.code === 0) {
+                            this.registerError = '';
+                            this.loginUsername = username;
+                            this.loginPassword = '';
+                            this.switchToLogin('Registration successful! Please sign in.');
+                        } else {
+                            this.registerError = payload?.msg || 'Registration failed.';
+                        }
+                    } catch (e) {
+                        this.registerError = 'Registration failed: ' + e.message;
+                    }
+                },
+
                 async tryAutoLogin() {
                     const savedHeader = localStorage.getItem('chfsAuthHeader');
                     const savedUser = localStorage.getItem('chfsAuthUser');
@@ -498,6 +626,7 @@
                     }
                     if (showMessage) {
                         this.loginError = 'Please log in to continue.';
+                        this.loginInfo = '';
                         this.focusLogin();
                     }
                     return false;
@@ -520,18 +649,20 @@
                             headers: this.buildHeaders()
                         });
 
-                        if (response.status === 401) {
-                            if (showErrors) {
-                                this.loginError = 'Invalid username or password.';
-                            }
-                            this.handleUnauthorized(null);
-                            return false;
+                    if (response.status === 401) {
+                        if (showErrors) {
+                            this.loginError = 'Invalid username or password.';
+                            this.loginInfo = '';
                         }
+                        this.handleUnauthorized(null);
+                        return false;
+                    }
 
                         const payload = this.parseApiResponse(await response.json());
                         if (payload.code === 0) {
                             this.isAuthenticated = true;
                             this.loginError = '';
+                            this.loginInfo = '';
                             this.currentUser = payload.data?.user?.name || this.loginUsername;
                             if (!this.loginUsername) {
                                 this.loginUsername = this.currentUser;
@@ -548,11 +679,13 @@
 
                         if (showErrors) {
                             this.loginError = payload.msg || 'Failed to verify credentials.';
+                            this.loginInfo = '';
                         }
                         return false;
                     } catch (e) {
                         if (showErrors) {
                             this.loginError = 'Login failed: ' + e.message;
+                            this.loginInfo = '';
                         }
                         return false;
                     }
@@ -562,8 +695,9 @@
                     const username = (this.loginUsername || '').trim();
                     if (!username || !this.loginPassword) {
                         this.loginError = 'Please enter username and password.';
+                        this.loginInfo = '';
                         this.focusLogin();
-                        return;
+                        return false;
                     }
 
                     try {
@@ -571,13 +705,16 @@
                         this.authHeader = this.createAuthHeader(username, this.loginPassword);
                     } catch (e) {
                         this.loginError = 'Failed to encode credentials.';
-                        return;
+                        this.loginInfo = '';
+                        return false;
                     }
 
                     const success = await this.refreshSession(true);
                     if (success) {
                         this.error = null;
                         this.loginPassword = '';
+                        this.loginError = '';
+                        this.loginInfo = '';
 
                         if (this.rememberCredentials) {
                             localStorage.setItem('chfsAuthHeader', this.authHeader);
@@ -595,6 +732,7 @@
                     } else {
                         this.resetCredentials();
                     }
+                    return success;
                 },
 
                 handleUnauthorized(message = 'Session expired. Please log in again.') {
@@ -618,6 +756,7 @@
                     if (message !== null) {
                         this.error = message;
                         this.loginError = message;
+                        this.loginInfo = '';
                     }
 
                     this.resetCredentials();

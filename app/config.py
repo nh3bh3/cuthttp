@@ -16,6 +16,7 @@ from .models import (
     TlsConfig, LoggingConfig, RateLimitConfig, IpFilterConfig,
     UiConfig, DavConfig, HotReloadConfig
 )
+from .user_store import load_registered_entries
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +69,13 @@ class ConfigManager:
                 data = yaml.safe_load(f) or {}
             
             config = self._parse_config(data)
+
+            # Merge dynamically registered users and their rules
+            dynamic_users, dynamic_rules = load_registered_entries()
+            if dynamic_users:
+                config.users.extend(dynamic_users)
+            if dynamic_rules:
+                config.rules.extend(dynamic_rules)
             self.config = config
             logger.info(f"Configuration loaded from {self.config_path}")
             return config
