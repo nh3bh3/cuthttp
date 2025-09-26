@@ -32,6 +32,33 @@ api_router = APIRouter(prefix="/api", tags=["api"])
 text_shares = {}
 
 
+# Request models
+class MkdirRequest(BaseModel):
+    root: str
+    path: str
+
+
+class RenameRequest(BaseModel):
+    root: str
+    path: str
+    newName: str
+
+
+class DeleteRequest(BaseModel):
+    root: str
+    paths: List[str]
+
+
+class TextShareRequest(BaseModel):
+    text: str
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    confirmPassword: str
+
+
 # Session endpoints
 @api_router.get("/session")
 async def get_session(request: Request, user: UserInfo = Depends(get_current_user)):
@@ -146,33 +173,6 @@ async def register_user(register_req: RegisterRequest):
             "roots": default_roots,
         },
     ).to_dict()
-
-
-# Request models
-class MkdirRequest(BaseModel):
-    root: str
-    path: str
-
-
-class RenameRequest(BaseModel):
-    root: str
-    path: str
-    newName: str
-
-
-class DeleteRequest(BaseModel):
-    root: str
-    paths: List[str]
-
-
-class TextShareRequest(BaseModel):
-    text: str
-
-
-class RegisterRequest(BaseModel):
-    username: str
-    password: str
-    confirmPassword: str
 
 
 @api_router.get("/list")

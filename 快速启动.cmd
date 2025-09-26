@@ -47,11 +47,12 @@ echo ✅ Python 环境检查通过
 echo.
 
 rem 快速安装依赖
+set "PIP_PACKAGES=fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions"
 echo 正在安装依赖包...
-pip install fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions --quiet --disable-pip-version-check
+pip install %PIP_PACKAGES% --quiet --disable-pip-version-check
 if errorlevel 1 (
     echo 依赖安装失败，尝试使用国内镜像源...
-    pip install fastapi uvicorn[standard] wsgidav pyyaml jinja2 aiofiles watchdog passlib[bcrypt] python-multipart asgiref typing-extensions -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet --disable-pip-version-check
+    pip install %PIP_PACKAGES% -i https://pypi.tuna.tsinghua.edu.cn/simple --quiet --disable-pip-version-check
 )
 
 rem 创建基本目录
