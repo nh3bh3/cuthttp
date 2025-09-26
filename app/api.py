@@ -33,6 +33,12 @@ api_router = APIRouter(prefix="/api", tags=["api"])
 text_shares = {}
 
 
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    confirmPassword: str
+
+
 # Session endpoints
 @api_router.get("/session")
 async def get_session(request: Request, user: UserInfo = Depends(get_current_user)):
