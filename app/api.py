@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 
 from .models import ApiResponse, ResponseCode, FileInfo, TextShare
-from .auth import get_current_user, UserInfo
+from .auth import get_current_user, UserInfo, hash_password
 from .rules import check_api_access, get_accessible_roots
 from .fs import (
     list_directory, create_directory, delete_file_or_directory,
@@ -20,8 +20,9 @@ from .fs import (
 )
 from .utils import parse_http_range, generate_short_id, create_response_headers
 from .metrics import upload_context, download_context
-from .config import get_config
+from .config import get_config, get_user_by_name
 from .ipfilter import get_client_ip
+from .user_store import add_registered_user
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,12 @@ api_router = APIRouter(prefix="/api", tags=["api"])
 
 # Text shares storage (in-memory for simplicity)
 text_shares = {}
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    confirmPassword: str
 
 
 # Session endpoints
@@ -47,6 +54,104 @@ async def get_session(request: Request, user: UserInfo = Depends(get_current_use
             "user": {"name": user.name},
             "roots": roots,
         }
+    ).to_dict()
+
+
+@api_router.post("/register")
+async def register_user(register_req: RegisterRequest):
+    """Register a new user account."""
+
+    username = register_req.username.strip()
+    password = register_req.password
+    confirm = register_req.confirmPassword
+
+    if not username:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Username is required",
+                data=None,
+            ).to_dict(),
+        )
+
+    if len(username) < 3:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Username must be at least 3 characters",
+                data=None,
+            ).to_dict(),
+        )
+
+    if not password or len(password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Password must be at least 6 characters",
+                data=None,
+            ).to_dict(),
+        )
+
+    if password != confirm:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Passwords do not match",
+                data=None,
+            ).to_dict(),
+        )
+
+    if get_user_by_name(username):
+        raise HTTPException(
+            status_code=409,
+            detail=ApiResponse(
+                code=ResponseCode.CONFLICT.value,
+                msg="Username already exists",
+                data=None,
+            ).to_dict(),
+        )
+
+    config = get_config()
+    default_roots = [share.name for share in config.shares] or []
+
+    try:
+        hashed = hash_password(password)
+        new_user, new_rules = add_registered_user(username, hashed, default_roots)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=ApiResponse(
+                code=ResponseCode.CONFLICT.value,
+                msg=str(exc),
+                data=None,
+            ).to_dict(),
+        ) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to register user: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=ApiResponse(
+                code=ResponseCode.INTERNAL_ERROR.value,
+                msg="Failed to register user",
+                data=None,
+            ).to_dict(),
+        ) from exc
+
+    # Update in-memory config so the new user can log in immediately
+    config.users.append(new_user)
+    config.rules.extend(new_rules)
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="Registration successful",
+        data={
+            "user": {"name": username},
+            "roots": default_roots,
+        },
     ).to_dict()
 
 
