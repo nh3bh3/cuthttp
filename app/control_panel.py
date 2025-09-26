@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import ipaddress
 import logging
 import os
@@ -14,6 +15,9 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 from .config import get_config
 from .ipfilter import parse_cidr
 from .metrics import metrics_manager
+from .quota import quota_manager
+from .user_store import list_registered_usernames
+from .utils import format_file_size
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +58,7 @@ def _safe_disk_usage(path: Path) -> Optional[Dict[str, int]]:
         return None
 
 
-def _share_status(share) -> Dict[str, Any]:
+async def _share_status(share) -> Dict[str, Any]:
     """Build share status payload."""
 
     path = Path(share.path)
@@ -70,6 +74,17 @@ def _share_status(share) -> Dict[str, Any]:
     disk = _safe_disk_usage(path)
     if disk:
         status["disk"] = disk
+
+    usage = await quota_manager.get_usage(share, force=not exists)
+    status["usage"] = {
+        "bytes": usage,
+        "display": format_file_size(usage),
+    }
+
+    quota_info = quota_manager.describe_quota(share, usage)
+    status["quota"] = quota_info
+    status["quota_enabled"] = quota_info is not None
+
     return status
 
 
@@ -152,7 +167,22 @@ def _summarize_ip_filter(allow_list: Iterable[str], deny_list: Iterable[str]) ->
     }
 
 
-def build_control_panel_state(current_user: str) -> Dict[str, Any]:
+def _summarize_users(config) -> List[Dict[str, Any]]:
+    dynamic = set(list_registered_usernames())
+    users: List[Dict[str, Any]] = []
+    for entry in config.users:
+        users.append(
+            {
+                "name": entry.name,
+                "dynamic": entry.name in dynamic,
+                "is_bcrypt": entry.is_bcrypt,
+            }
+        )
+    users.sort(key=lambda item: item["name"].lower())
+    return users
+
+
+async def build_control_panel_state(current_user: str) -> Dict[str, Any]:
     """Return the payload consumed by the front-end control panel."""
 
     config = get_config()
@@ -169,7 +199,7 @@ def build_control_panel_state(current_user: str) -> Dict[str, Any]:
     if not bind_all:
         lan_urls.insert(0, f"{scheme}://{_format_host(config.server.addr)}:{config.server.port}")
 
-    shares = [_share_status(share) for share in config.shares]
+    shares = await asyncio.gather(*(_share_status(share) for share in config.shares))
 
     return {
         "user": {"name": current_user},
@@ -188,4 +218,5 @@ def build_control_panel_state(current_user: str) -> Dict[str, Any]:
             "python_version": platform.python_version(),
             "working_directory": str(Path.cwd()),
         },
+        "users": _summarize_users(config),
     }

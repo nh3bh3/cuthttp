@@ -13,6 +13,7 @@ server:
 shares:
   - name: "public"
     path: "C:\\chfs-data\\public"
+    quota: "50GB"
   - name: "home"
     path: "C:\\chfs-data\\home"
   - name: "temp"

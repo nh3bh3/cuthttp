@@ -12,8 +12,15 @@ import aiofiles.os
 from fastapi import UploadFile
 
 from .models import FileInfo, HttpRange
-from .utils import get_mime_type, normalize_path, sanitize_filename, validate_filename
+from .utils import (
+    get_mime_type,
+    normalize_path,
+    sanitize_filename,
+    validate_filename,
+    format_file_size,
+)
 from .config import get_share_by_name
+from .quota import quota_manager, ShareQuotaExceededError
 
 logger = logging.getLogger(__name__)
 
@@ -270,9 +277,11 @@ async def delete_file_or_directory(root_name: str, rel_path: str) -> None:
             await aiofiles.os.remove(target_path)
         
         logger.info(f"Deleted: {target_path}")
-        
+
     except OSError as e:
         raise FileSystemError(f"Failed to delete: {e}")
+
+    quota_manager.invalidate(share.name)
 
 
 async def rename_file_or_directory(root_name: str, old_rel_path: str, new_name: str) -> None:
@@ -386,25 +395,62 @@ async def save_uploaded_file(
     if await aiofiles.os.path.exists(file_path):
         raise FileSystemError(f"File already exists: {filename}")
     
+    quota_limit = getattr(share, "quota_bytes", None)
+    quota_usage_before = 0
+    remaining_quota = None
+    if quota_limit is not None:
+        quota_usage_before = await quota_manager.get_usage(share, force=True)
+        remaining_quota = quota_limit - quota_usage_before
+        if remaining_quota <= 0:
+            raise FileSystemError(
+                f"Share '{share.name}' has reached its quota ({format_file_size(quota_limit)} limit)"
+            )
+
     try:
         bytes_written = 0
+        file_too_large = False
+        quota_exceeded_bytes: Optional[int] = None
         async with aiofiles.open(file_path, 'wb') as f:
             while True:
                 chunk = await upload_file.read(8192)  # 8KB chunks
                 if not chunk:
                     break
-                
-                bytes_written += len(chunk)
-                if max_size is not None and bytes_written > max_size:
-                    # Clean up partial file
-                    await aiofiles.os.remove(file_path)
-                    raise FileSystemError(f"File too large (max: {max_size} bytes)")
-                
+
+                chunk_size = len(chunk)
+
+                if max_size is not None and bytes_written + chunk_size > max_size:
+                    file_too_large = True
+                    break
+
+                if remaining_quota is not None and bytes_written + chunk_size > remaining_quota:
+                    quota_exceeded_bytes = quota_usage_before + bytes_written + chunk_size
+                    break
+
                 await f.write(chunk)
-        
+                bytes_written += chunk_size
+
+        if file_too_large:
+            if await aiofiles.os.path.exists(file_path):
+                await aiofiles.os.remove(file_path)
+            raise FileSystemError(f"File too large (max: {max_size} bytes)")
+
+        if quota_exceeded_bytes is not None and quota_limit is not None:
+            if await aiofiles.os.path.exists(file_path):
+                await aiofiles.os.remove(file_path)
+            raise ShareQuotaExceededError(
+                share=share.name,
+                quota_bytes=quota_limit,
+                usage_bytes=quota_exceeded_bytes,
+            )
+
+        if quota_limit is not None:
+            quota_manager.invalidate(share.name)
+
         logger.info(f"Uploaded file: {file_path} ({bytes_written} bytes)")
         return bytes_written
-        
+
+    except ShareQuotaExceededError as exc:
+        raise FileSystemError(str(exc)) from exc
     except OSError as e:
         # Clean up partial file
         if await aiofiles.os.path.exists(file_path):
@@ -520,14 +566,41 @@ async def write_text_file(root_name: str, rel_path: str, content: str) -> int:
         except OSError as e:
             raise FileSystemError(f"Failed to create directory: {e}")
     
+    content_bytes = content.encode('utf-8')
+    new_size = len(content_bytes)
+
+    existing_size = 0
+    if await aiofiles.os.path.exists(file_path):
+        try:
+            stat = await aiofiles.os.stat(file_path)
+            existing_size = stat.st_size
+        except OSError:
+            existing_size = 0
+
+    quota_limit = getattr(share, "quota_bytes", None)
+    if quota_limit is not None:
+        usage_before = await quota_manager.get_usage(share, force=True)
+        projected = usage_before - existing_size + new_size
+        if projected > quota_limit:
+            raise FileSystemError(
+                str(
+                    ShareQuotaExceededError(
+                        share=share.name,
+                        quota_bytes=quota_limit,
+                        usage_bytes=projected,
+                    )
+                )
+            )
+
     try:
         async with aiofiles.open(file_path, 'w', encoding='utf-8') as f:
             await f.write(content)
-        
-        stat = await aiofiles.os.stat(file_path)
-        logger.info(f"Wrote text file: {file_path} ({stat.st_size} bytes)")
-        return stat.st_size
-        
+
+        logger.info(f"Wrote text file: {file_path} ({new_size} bytes)")
+        if quota_limit is not None:
+            quota_manager.invalidate(share.name)
+        return new_size
+
     except OSError as e:
         raise FileSystemError(f"Failed to write file: {e}")
 

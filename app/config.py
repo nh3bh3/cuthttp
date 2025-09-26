@@ -17,6 +17,8 @@ from .models import (
     UiConfig, DavConfig, HotReloadConfig
 )
 from .user_store import load_registered_entries
+from .utils import parse_size_to_bytes
+from .share_store import load_share_overrides, set_share_quota_override
 
 logger = logging.getLogger(__name__)
 
@@ -102,11 +104,35 @@ class ConfigManager:
         
         # Shares
         shares = []
+        share_overrides = load_share_overrides()
+
         for share_data in data.get('shares', []):
+            quota_bytes = None
+            if 'quota' in share_data:
+                try:
+                    quota_bytes = parse_size_to_bytes(share_data['quota'])
+                except ValueError as exc:
+                    logger.warning("Invalid quota value for share %s: %s", share_data.get('name'), exc)
+                    quota_bytes = None
+            elif 'quotaBytes' in share_data:
+                try:
+                    quota_bytes = parse_size_to_bytes(share_data['quotaBytes'])
+                except ValueError as exc:
+                    logger.warning("Invalid quotaBytes value for share %s: %s", share_data.get('name'), exc)
+                    quota_bytes = None
+
             share = ShareInfo(
                 name=share_data['name'],
-                path=Path(share_data['path']).resolve()
+                path=Path(share_data['path']).resolve(),
+                quota_bytes=quota_bytes,
             )
+
+            override = share_overrides.get(share.name)
+            if override:
+                quota_override = override.get('quota_bytes')
+                if isinstance(quota_override, int) and quota_override > 0:
+                    share.quota_bytes = quota_override
+
             shares.append(share)
         
         # Users
@@ -295,6 +321,18 @@ class ConfigManager:
                 return user
         return None
 
+    def set_share_quota(self, name: str, quota_bytes: Optional[int]) -> ShareInfo:
+        """Update the quota for a configured share in-memory and persist override."""
+
+        config = self.get_config()
+        for share in config.shares:
+            if share.name == name:
+                share.quota_bytes = quota_bytes if quota_bytes and quota_bytes > 0 else None
+                set_share_quota_override(name, share.quota_bytes)
+                return share
+
+        raise KeyError(f"Share not found: {name}")
+
 
 # Global configuration manager instance
 config_manager = ConfigManager()
@@ -320,3 +358,9 @@ def get_share_by_name(name: str) -> Optional[ShareInfo]:
 def get_user_by_name(name: str) -> Optional[UserInfo]:
     """Get user by name"""
     return config_manager.get_user_by_name(name)
+
+
+def set_share_quota(name: str, quota_bytes: Optional[int]) -> ShareInfo:
+    """Set or clear the quota for the specified share."""
+
+    return config_manager.set_share_quota(name, quota_bytes)

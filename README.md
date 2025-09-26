@@ -14,6 +14,7 @@
 - 📱 **响应式 UI**: 原生 HTML + Tailwind CDN，移动端友好
 - 🔗 **文本快速分享**: 生成短链 `/t/<id>` 用于文本分享
 - 🚀 **Windows 兼容**: 正确处理反斜杠与 UTF-8 文件名，防目录穿越
+- 📦 **共享目录配额**: 可为每个共享目录设定存储上限，防止空间被占满
 - 📥 **范围下载**: HTTP Range 支持，适合大文件和断点续传
 
 ### 中间件与可观测性
@@ -82,6 +83,14 @@ docker run -d \
 .\scripts\install-service.ps1 -Action uninstall
 ```
 
+#### 4. 本地服务器控制台
+
+```powershell
+pwsh .\scripts\server-control.ps1 -ServerUrl "http://127.0.0.1:8080"
+```
+
+该控制台提供共享目录配额管理、服务器状态查看以及动态用户移除功能。出于安全考虑，相关 API 仅允许在服务器本机访问。
+
 ### 访问服务
 
 - **Web 界面**: http://127.0.0.1:8080
@@ -143,6 +152,7 @@ server:
 shares:
   - name: "public"
     path: "C:\\chfs-data\\public"
+    quota: "50GB"  # 可选：10GB、500MB 等格式，留空表示无限制
   - name: "home"
     path: "C:\\chfs-data\\home"
 
@@ -202,6 +212,8 @@ dav:
   enabled: true
   mountPath: "/webdav"
 ```
+
+> 提示：运行时通过控制台或 REST API 修改的配额会写入 `data/shares.json`，无需手动编辑 `chfs.yaml`。
 
 ## 🔐 Security / 安全性
 

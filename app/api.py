@@ -4,6 +4,7 @@ API routes for chfs-py
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import time
 from pathlib import Path
@@ -19,10 +20,12 @@ from .rules import check_api_access, get_accessible_roots
 from .storage_server import storage_server, FileSystemError
 from .utils import parse_http_range, generate_short_id, create_response_headers
 from .metrics import upload_context, download_context
-from .config import get_config, get_user_by_name
+from .config import get_config, get_user_by_name, get_share_by_name, set_share_quota, config_manager
 from .ipfilter import get_client_ip
-from .user_store import add_registered_user
+from .user_store import add_registered_user, remove_registered_user, list_registered_usernames
 from .control_panel import build_control_panel_state
+from .quota import quota_manager
+from .utils import format_file_size, parse_size_to_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,34 @@ class RegisterRequest(BaseModel):
     confirmPassword: str
 
 
+class ShareQuotaUpdate(BaseModel):
+    quota: Optional[str] = None
+    quotaBytes: Optional[int] = None
+
+
+def require_local_admin(request: Request, user: UserInfo = Depends(get_current_user)) -> UserInfo:
+    """Ensure administrative actions originate from the local machine."""
+
+    client_ip = get_client_ip(request)
+    host = client_ip.split('%', 1)[0] if client_ip else ""
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        addr = None
+
+    if addr is None or not addr.is_loopback:
+        raise HTTPException(
+            status_code=403,
+            detail=ApiResponse(
+                code=ResponseCode.FORBIDDEN.value,
+                msg="Administrative APIs are only accessible from the server host.",
+                data=None,
+            ).to_dict(),
+        )
+
+    return user
+
+
 # Session endpoints
 @api_router.get("/session")
 async def get_session(request: Request, user: UserInfo = Depends(get_current_user)):
@@ -79,14 +110,152 @@ async def get_session(request: Request, user: UserInfo = Depends(get_current_use
 
 
 @api_router.get("/admin/status")
-async def get_admin_status(user: UserInfo = Depends(get_current_user)):
+async def get_admin_status(user: UserInfo = Depends(require_local_admin)):
     """Return consolidated information for the server control panel."""
 
-    status = build_control_panel_state(user.name)
+    status = await build_control_panel_state(user.name)
     return ApiResponse(
         code=ResponseCode.SUCCESS.value,
         msg="success",
         data=status,
+    ).to_dict()
+
+
+@api_router.put("/admin/shares/{share_name}/quota")
+async def update_share_quota(
+    share_name: str,
+    payload: ShareQuotaUpdate,
+    user: UserInfo = Depends(require_local_admin),
+):
+    """Update or clear the quota for a share."""
+
+    share = get_share_by_name(share_name)
+    if not share:
+        raise HTTPException(
+            status_code=404,
+            detail=ApiResponse(
+                code=ResponseCode.NOT_FOUND.value,
+                msg="Share not found",
+                data=None,
+            ).to_dict(),
+        )
+
+    if payload.quotaBytes is not None and payload.quotaBytes < 0:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Quota must be a positive value or omitted to remove the limit.",
+                data=None,
+            ).to_dict(),
+        )
+
+    quota_bytes: Optional[int] = None
+    if payload.quotaBytes is not None:
+        quota_bytes = payload.quotaBytes or None
+    elif payload.quota is not None:
+        try:
+            quota_bytes = parse_size_to_bytes(payload.quota)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=ApiResponse(
+                    code=ResponseCode.ERROR.value,
+                    msg=str(exc),
+                    data=None,
+                ).to_dict(),
+            )
+
+    updated_share = set_share_quota(share_name, quota_bytes)
+    quota_manager.invalidate(share_name)
+
+    quota_display = (
+        format_file_size(updated_share.quota_bytes)
+        if updated_share.quota_bytes
+        else "Unlimited"
+    )
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="Share quota updated",
+        data={
+            "share": {
+                "name": updated_share.name,
+                "quotaBytes": updated_share.quota_bytes,
+                "quotaDisplay": quota_display,
+            }
+        },
+    ).to_dict()
+
+
+@api_router.get("/admin/users")
+async def get_admin_users(user: UserInfo = Depends(require_local_admin)):
+    """Return configured and dynamically registered users."""
+
+    config = get_config()
+    dynamic_users = set(list_registered_usernames())
+    users = [
+        {
+            "name": entry.name,
+            "dynamic": entry.name in dynamic_users,
+            "is_bcrypt": entry.is_bcrypt,
+        }
+        for entry in config.users
+    ]
+    users.sort(key=lambda item: item["name"].lower())
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="success",
+        data={"users": users},
+    ).to_dict()
+
+
+@api_router.delete("/admin/users/{username}")
+async def delete_admin_user(
+    username: str,
+    user: UserInfo = Depends(require_local_admin),
+):
+    """Remove a dynamically registered user."""
+
+    target = username.strip()
+    if not target:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Username is required",
+                data=None,
+            ).to_dict(),
+        )
+
+    if target.lower() == user.name.lower():
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="You cannot remove the currently authenticated account.",
+                data=None,
+            ).to_dict(),
+        )
+
+    removed = remove_registered_user(target)
+    if not removed:
+        raise HTTPException(
+            status_code=404,
+            detail=ApiResponse(
+                code=ResponseCode.NOT_FOUND.value,
+                msg="User not found or not managed by the control panel.",
+                data=None,
+            ).to_dict(),
+        )
+
+    config_manager.load_config()
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="User removed",
+        data={"username": target},
     ).to_dict()
 
 
