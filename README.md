@@ -195,7 +195,7 @@ ui:
   brand: "chfs-py"
   title: "chfs-py File Server"
   textShareDir: "C:\\chfs-data\\public\\_text"
-  maxUploadSize: 104857600  # 100MB
+  # maxUploadSize: 104857600  # 可选，取消注释可限制上传大小
 
 # WebDAV 配置
 dav:
@@ -217,7 +217,7 @@ dav:
 - IP 地址过滤（CIDR 支持）
 
 ### 文件上传
-- 可配置文件大小限制
+- 默认不限制上传大小，可按需设置 `maxUploadSize`
 - 安全的文件名处理
 - 防止恶意文件上传
 

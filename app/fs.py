@@ -335,7 +335,7 @@ async def save_uploaded_file(
     rel_path: str,
     filename: str,
     upload_file: UploadFile,
-    max_size: int = 100 * 1024 * 1024  # 100MB default
+    max_size: Optional[int] = None,
 ) -> int:
     """
     Save uploaded file safely
@@ -345,7 +345,7 @@ async def save_uploaded_file(
         rel_path: Relative directory path
         filename: Target filename
         upload_file: FastAPI UploadFile object
-        max_size: Maximum file size in bytes
+        max_size: Optional maximum file size in bytes
         
     Returns:
         Number of bytes written
@@ -392,7 +392,7 @@ async def save_uploaded_file(
                     break
                 
                 bytes_written += len(chunk)
-                if bytes_written > max_size:
+                if max_size is not None and bytes_written > max_size:
                     # Clean up partial file
                     await aiofiles.os.remove(file_path)
                     raise FileSystemError(f"File too large (max: {max_size} bytes)")

@@ -292,7 +292,7 @@ ui:
   brand: "chfs-py"
   title: "chfs-py 文件服务器"
   textShareDir: "$currentDir\\chfs-data\\public\\_text"
-  maxUploadSize: 104857600  # 100MB
+  # maxUploadSize: 104857600  # 可选，取消注释以限制上传大小
   language: "zh"
 
 # WebDAV 配置

@@ -1,26 +1,19 @@
-"""
-API routes for chfs-py
-"""
+"""API routes for chfs-py"""
 
 import logging
 import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, Depends
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from .models import ApiResponse, ResponseCode, FileInfo, TextShare
+from .models import ApiResponse, ResponseCode, TextShare
 from .auth import get_current_user, UserInfo
 from .rules import check_api_access, get_accessible_roots
-from .fs import (
-    list_directory, create_directory, delete_file_or_directory,
-    rename_file_or_directory, save_uploaded_file, open_file_for_download,
-    write_text_file, FileSystemError, PathTraversalError
-)
+from .server_runtime import file_server, FileSystemError
 from .utils import parse_http_range, generate_short_id, create_response_headers
 from .metrics import upload_context, download_context
-from .config import get_config
 from .ipfilter import get_client_ip
 
 logger = logging.getLogger(__name__)
@@ -30,6 +23,12 @@ api_router = APIRouter(prefix="/api", tags=["api"])
 
 # Text shares storage (in-memory for simplicity)
 text_shares = {}
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    confirmPassword: str
 
 
 # Session endpoints
@@ -47,6 +46,86 @@ async def get_session(request: Request, user: UserInfo = Depends(get_current_use
             "user": {"name": user.name},
             "roots": roots,
         }
+    ).to_dict()
+
+
+@api_router.post("/register")
+async def register_user(register_req: RegisterRequest):
+    """Register a new user account."""
+
+    username = register_req.username.strip()
+    password = register_req.password
+    confirm = register_req.confirmPassword
+
+    if not username:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Username is required",
+                data=None,
+            ).to_dict(),
+        )
+
+    if len(username) < 3:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Username must be at least 3 characters",
+                data=None,
+            ).to_dict(),
+        )
+
+    if not password or len(password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Password must be at least 6 characters",
+                data=None,
+            ).to_dict(),
+        )
+
+    if password != confirm:
+        raise HTTPException(
+            status_code=400,
+            detail=ApiResponse(
+                code=ResponseCode.ERROR.value,
+                msg="Passwords do not match",
+                data=None,
+            ).to_dict(),
+        )
+
+    try:
+        _, default_roots = file_server.register_user(username, password)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail=ApiResponse(
+                code=ResponseCode.CONFLICT.value,
+                msg=str(exc),
+                data=None,
+            ).to_dict(),
+        ) from exc
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.error("Failed to register user: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=ApiResponse(
+                code=ResponseCode.INTERNAL_ERROR.value,
+                msg="Failed to register user",
+                data=None,
+            ).to_dict(),
+        ) from exc
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="Registration successful",
+        data={
+            "user": {"name": username},
+            "roots": default_roots,
+        },
     ).to_dict()
 
 
@@ -95,7 +174,7 @@ async def list_files(
         )
     
     try:
-        files = await list_directory(root, path)
+        files = await file_server.list_directory(root, path)
         
         return ApiResponse(
             code=ResponseCode.SUCCESS.value,
@@ -142,25 +221,9 @@ async def upload_file(
             ).to_dict()
         )
     
-    # Check file size
-    config = get_config()
-    max_size = config.ui.maxUploadSize
-    
-    if file.size and file.size > max_size:
-        raise HTTPException(
-            status_code=413,
-            detail=ApiResponse(
-                code=ResponseCode.PAYLOAD_TOO_LARGE.value,
-                msg=f"File too large (max: {max_size} bytes)",
-                data=None
-            ).to_dict()
-        )
-    
     try:
         with upload_context() as counter:
-            bytes_written = await save_uploaded_file(
-                root, path, file.filename or "unnamed", file, max_size
-            )
+            bytes_written = await file_server.upload_file(root, path, file)
             counter.add_bytes(bytes_written)
         
         return ApiResponse(
@@ -207,7 +270,7 @@ async def make_directory(
         )
     
     try:
-        await create_directory(mkdir_req.root, mkdir_req.path)
+        await file_server.create_directory(mkdir_req.root, mkdir_req.path)
         
         return ApiResponse(
             code=ResponseCode.SUCCESS.value,
@@ -252,7 +315,7 @@ async def rename_item(
         )
     
     try:
-        await rename_file_or_directory(rename_req.root, rename_req.path, rename_req.newName)
+        await file_server.rename_path(rename_req.root, rename_req.path, rename_req.newName)
         
         return ApiResponse(
             code=ResponseCode.SUCCESS.value,
@@ -294,11 +357,11 @@ async def delete_items(
         if not allowed:
             failed_paths.append({"path": path, "error": reason})
             continue
-        
+
         try:
-            await delete_file_or_directory(delete_req.root, path)
+            await file_server.delete_path(delete_req.root, path)
             deleted_paths.append(path)
-            
+
         except FileSystemError as e:
             failed_paths.append({"path": path, "error": str(e)})
     
@@ -342,7 +405,7 @@ async def download_file(
         http_range = parse_http_range(range_header) if range_header else None
         
         # Open file for download
-        file_generator, start, end, total_size = await open_file_for_download(
+        file_generator, start, end, total_size = await file_server.open_for_download(
             root, path, http_range
         )
         
@@ -419,31 +482,12 @@ async def create_text_share(
     text_shares[share_id] = text_share
     
     # Also save to file if configured
-    config = get_config()
-    if config.ui.textShareDir:
-        try:
-            # Find a share that contains the text share directory
-            text_dir_path = Path(config.ui.textShareDir)
-            root_name = None
-            
-            for share in config.shares:
-                try:
-                    text_dir_path.relative_to(share.path)
-                    root_name = share.name
-                    break
-                except ValueError:
-                    continue
-            
-            if root_name:
-                rel_path = str(text_dir_path.relative_to(
-                    next(s.path for s in config.shares if s.name == root_name)
-                ))
-                filename = f"{share_id}.txt"
-                
-                await write_text_file(root_name, f"{rel_path}/{filename}", text_req.text)
-                
-        except Exception as e:
-            logger.warning(f"Failed to save text share to file: {e}")
+    try:
+        await file_server.save_text_share(share_id, text_req.text)
+    except FileSystemError as e:
+        logger.warning("Failed to persist text share %s: %s", share_id, e)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning("Unexpected error while persisting text share %s: %s", share_id, e)
     
     return ApiResponse(
         code=ResponseCode.SUCCESS.value,

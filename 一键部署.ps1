@@ -301,7 +301,7 @@ ui:
   brand: "chfs-py"
   title: "文件服务器"
   textShareDir: "$($DataPath.Replace('\', '\\'))\public\_text"
-  maxUploadSize: 104857600
+  # maxUploadSize: 104857600  # 可选，取消注释以限制上传大小
   language: "zh"
 
 dav:

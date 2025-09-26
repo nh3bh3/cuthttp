@@ -85,7 +85,7 @@ ui:
   brand: "chfs-py"
   title: "chfs-py File Server"
   textShareDir: "C:\\chfs-data\\public\\_text"
-  maxUploadSize: 104857600  # 100MB in bytes
+  # maxUploadSize can be set if you want to enforce a limit; omit for unlimited uploads
   language: "en"  # en or zh
 
 # WebDAV configuration
