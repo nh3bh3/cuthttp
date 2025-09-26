@@ -50,6 +50,11 @@
                                 <i class="fas fa-share-alt"></i>
                                 <span class="hidden sm:inline">Share Text</span>
                             </button>
+                            <button @click="openControlPanel()"
+                                    class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                                <i class="fas fa-sliders-h"></i>
+                                <span class="hidden sm:inline">Control Panel</span>
+                            </button>
                             <button @click="logout()"
                                     class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg transition-colors">
                                 <i class="fas fa-sign-out-alt"></i>
@@ -407,18 +412,266 @@
         <div x-show="showRename" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-lg max-w-md w-full p-6" @click.away="showRename = false">
                 <h3 class="text-lg font-semibold mb-4">Rename</h3>
-                <input type="text" x-model="renameValue" placeholder="New name" 
+                <input type="text" x-model="renameValue" placeholder="New name"
                        class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                        @keyup.enter="confirmRename()">
                 <div class="flex justify-end gap-3 mt-6">
                     <button @click="showRename = false" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
                         Cancel
                     </button>
-                    <button @click="confirmRename()" 
+                    <button @click="confirmRename()"
                             :disabled="!renameValue.trim()"
                             class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
                         Rename
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Control Panel Modal -->
+        <div x-show="showControlPanel" @keydown.escape.window="closeControlPanel()"
+             class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+            <div class="bg-white rounded-lg shadow-2xl max-w-5xl w-full p-6 overflow-hidden" @click.away="closeControlPanel()">
+                <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-4">
+                    <div>
+                        <h3 class="text-xl font-semibold text-gray-900">Server Control Panel</h3>
+                        <p class="text-sm text-gray-500 mt-1">
+                            <span x-show="controlPanelTimestamp" x-text="'Last updated: ' + controlPanelTimestamp"></span>
+                            <span x-show="!controlPanelTimestamp">Load the latest status to view live metrics.</span>
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <button @click="refreshControlPanel()"
+                                class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                            <i class="fas fa-rotate"></i>
+                            <span>Refresh</span>
+                        </button>
+                        <button @click="closeControlPanel()"
+                                class="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg transition-colors">
+                            Close
+                        </button>
+                    </div>
+                </div>
+
+                <div x-show="controlPanelLoading"
+                     class="flex items-center gap-2 bg-blue-50 border border-blue-100 text-blue-700 px-4 py-3 rounded-lg mb-4">
+                    <i class="fas fa-circle-notch fa-spin"></i>
+                    <span>Loading latest server information…</span>
+                </div>
+
+                <div x-show="controlPanelError"
+                     class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4"
+                     x-text="controlPanelError"></div>
+
+                <div x-show="!controlPanelLoading && controlPanelData" class="space-y-6 max-h-[70vh] overflow-y-auto pr-1">
+                    <section class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                        <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                            <div>
+                                <h4 class="text-lg font-semibold text-gray-800">Quick LAN Access</h4>
+                                <p class="text-sm text-gray-600">Share these URLs with other devices on your network.</p>
+                            </div>
+                            <span class="text-xs font-semibold px-3 py-1 rounded-full"
+                                  :class="(controlPanelData?.ip_filter?.lan_allowed ?? false) ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                                <span x-text="(controlPanelData?.ip_filter?.lan_allowed ?? false) ? 'LAN Reachable' : 'LAN Restricted'"></span>
+                            </span>
+                        </div>
+                        <ul class="space-y-2">
+                            <template x-for="url in (controlPanelData?.server?.lan_urls || [])" :key="url">
+                                <li class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white border border-gray-200 rounded-lg px-3 py-2">
+                                    <span class="text-sm font-mono text-gray-800 truncate" x-text="url"></span>
+                                    <a :href="url" target="_blank" rel="noopener"
+                                       class="text-blue-600 hover:text-blue-700 text-sm font-medium flex items-center gap-1">
+                                        <i class="fas fa-arrow-up-right-from-square"></i>
+                                        Open
+                                    </a>
+                                </li>
+                            </template>
+                            <li x-show="(controlPanelData?.server?.lan_urls || []).length === 0"
+                                class="text-sm text-gray-500">
+                                No LAN addresses detected. The server currently binds to
+                                <span class="font-mono" x-text="controlPanelData?.server?.host"></span>.
+                            </li>
+                        </ul>
+                    </section>
+
+                    <section class="grid md:grid-cols-2 gap-4">
+                        <div class="bg-white border border-gray-200 rounded-lg p-4">
+                            <h4 class="font-semibold text-gray-800 mb-2">IP Filter Configuration</h4>
+                            <p class="text-sm text-gray-600 mb-3">
+                                Mode:
+                                <span class="font-medium text-gray-800" x-text="controlPanelData?.ip_filter?.mode || 'unknown'"></span>
+                            </p>
+                            <div class="space-y-2 text-sm text-gray-700">
+                                <div class="font-medium text-gray-700">Allow rules (<span x-text="controlPanelData?.ip_filter?.allow_count ?? 0"></span>)</div>
+                                <ul class="list-disc list-inside" x-show="(controlPanelData?.ip_filter?.allow || []).length">
+                                    <template x-for="rule in controlPanelData?.ip_filter?.allow" :key="`allow-${rule}`">
+                                        <li x-text="rule"></li>
+                                    </template>
+                                </ul>
+                                <p x-show="!(controlPanelData?.ip_filter?.allow || []).length" class="text-gray-500">
+                                    No explicit allow rules; all addresses are permitted unless denied.
+                                </p>
+                            </div>
+                            <div class="mt-4 space-y-2 text-sm text-gray-700">
+                                <div class="font-medium text-gray-700">Deny rules (<span x-text="controlPanelData?.ip_filter?.deny_count ?? 0"></span>)</div>
+                                <ul class="list-disc list-inside" x-show="(controlPanelData?.ip_filter?.deny || []).length">
+                                    <template x-for="rule in controlPanelData?.ip_filter?.deny" :key="`deny-${rule}`">
+                                        <li x-text="rule"></li>
+                                    </template>
+                                </ul>
+                                <p x-show="!(controlPanelData?.ip_filter?.deny || []).length" class="text-gray-500">
+                                    No deny rules are configured.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-4 space-y-2">
+                            <h4 class="font-semibold text-gray-800">LAN Reachability Details</h4>
+                            <p class="text-sm text-gray-600" x-show="controlPanelData?.ip_filter?.lan_allowed">
+                                Private network traffic is currently allowed. These rules grant access:
+                            </p>
+                            <ul class="list-disc list-inside text-sm text-gray-700"
+                                x-show="(controlPanelData?.ip_filter?.lan_allowing_rules || []).length">
+                                <template x-for="rule in controlPanelData?.ip_filter?.lan_allowing_rules" :key="`lan-allow-${rule}`">
+                                    <li x-text="rule"></li>
+                                </template>
+                            </ul>
+                            <p class="text-sm text-red-600" x-show="!(controlPanelData?.ip_filter?.lan_allowed)">
+                                Private networks are blocked by the current rules. Add your LAN ranges to the allow list or remove blocking entries.
+                            </p>
+                            <ul class="list-disc list-inside text-sm text-red-600"
+                                x-show="(controlPanelData?.ip_filter?.lan_blocking_rules || []).length">
+                                <template x-for="rule in controlPanelData?.ip_filter?.lan_blocking_rules" :key="`lan-block-${rule}`">
+                                    <li x-text="rule"></li>
+                                </template>
+                            </ul>
+                        </div>
+                    </section>
+
+                    <section class="bg-white border border-gray-200 rounded-lg p-4">
+                        <div class="flex items-center justify-between mb-3">
+                            <h4 class="text-lg font-semibold text-gray-800">Shares</h4>
+                            <span class="text-xs text-gray-500" x-text="`Configured: ${(controlPanelData?.shares || []).length}`"></span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200 text-sm">
+                                <thead class="bg-gray-100">
+                                    <tr>
+                                        <th class="px-3 py-2 text-left font-medium text-gray-600">Name</th>
+                                        <th class="px-3 py-2 text-left font-medium text-gray-600">Path</th>
+                                        <th class="px-3 py-2 text-left font-medium text-gray-600">Status</th>
+                                        <th class="px-3 py-2 text-left font-medium text-gray-600">Disk</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <template x-for="share in (controlPanelData?.shares || [])" :key="share.name">
+                                        <tr>
+                                            <td class="px-3 py-2 font-medium text-gray-800" x-text="share.name"></td>
+                                            <td class="px-3 py-2 font-mono text-xs text-gray-600 truncate" x-text="share.path"></td>
+                                            <td class="px-3 py-2">
+                                                <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold"
+                                                      :class="share.exists ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'">
+                                                    <i :class="share.exists ? 'fas fa-check' : 'fas fa-triangle-exclamation'"></i>
+                                                    <span x-text="share.exists ? 'Available' : 'Missing'"></span>
+                                                </span>
+                                                <div class="text-xs text-gray-500 mt-1 flex items-center gap-2">
+                                                    <span :class="share.readable ? 'text-green-600' : 'text-red-600'">
+                                                        <i class="fas fa-eye"></i>
+                                                        <span x-text="share.readable ? 'readable' : 'no read access'"></span>
+                                                    </span>
+                                                    <span class="text-gray-400">•</span>
+                                                    <span :class="share.writable ? 'text-green-600' : 'text-red-600'">
+                                                        <i class="fas fa-pen"></i>
+                                                        <span x-text="share.writable ? 'writable' : 'read-only'"></span>
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td class="px-3 py-2 text-xs text-gray-600">
+                                                <template x-if="share.disk">
+                                                    <div class="space-y-1">
+                                                        <div>
+                                                            <span class="font-medium text-gray-700">Total:</span>
+                                                            <span x-text="formatFileSize(share.disk.total)"></span>
+                                                        </div>
+                                                        <div>
+                                                            <span class="font-medium text-gray-700">Free:</span>
+                                                            <span x-text="formatFileSize(share.disk.free)"></span>
+                                                        </div>
+                                                    </div>
+                                                </template>
+                                                <p x-show="!share.disk" class="text-gray-400">Disk usage unavailable</p>
+                                            </td>
+                                        </tr>
+                                    </template>
+                                    <tr x-show="(controlPanelData?.shares || []).length === 0">
+                                        <td colspan="4" class="px-3 py-4 text-center text-gray-500">No shares configured.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="grid md:grid-cols-2 gap-4">
+                        <div class="bg-white border border-gray-200 rounded-lg p-4">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-3">Traffic &amp; Performance</h4>
+                            <div class="grid grid-cols-2 gap-3 text-sm">
+                                <div class="bg-gray-50 rounded-lg p-3">
+                                    <div class="text-gray-500">Total Requests</div>
+                                    <div class="text-xl font-semibold text-gray-900" x-text="controlPanelData?.metrics?.requests?.total ?? 0"></div>
+                                </div>
+                                <div class="bg-gray-50 rounded-lg p-3">
+                                    <div class="text-gray-500">Active Requests</div>
+                                    <div class="text-xl font-semibold text-gray-900" x-text="controlPanelData?.metrics?.requests?.active ?? 0"></div>
+                                </div>
+                                <div class="bg-gray-50 rounded-lg p-3">
+                                    <div class="text-gray-500">Avg Response (s)</div>
+                                    <div class="text-xl font-semibold text-gray-900" x-text="(controlPanelData?.metrics?.requests?.avg_response_time ?? 0).toFixed(3)"></div>
+                                </div>
+                                <div class="bg-gray-50 rounded-lg p-3">
+                                    <div class="text-gray-500">Uptime (s)</div>
+                                    <div class="text-xl font-semibold text-gray-900" x-text="Math.round(controlPanelData?.metrics?.uptime_seconds ?? 0)"></div>
+                                </div>
+                            </div>
+                            <div class="mt-4 grid grid-cols-2 gap-3 text-sm">
+                                <div class="bg-gray-50 rounded-lg p-3">
+                                    <div class="text-gray-500">Uploaded</div>
+                                    <div class="text-base font-semibold text-gray-900" x-text="formatFileSize(controlPanelData?.metrics?.transfer?.upload_bytes || 0)"></div>
+                                </div>
+                                <div class="bg-gray-50 rounded-lg p-3">
+                                    <div class="text-gray-500">Downloaded</div>
+                                    <div class="text-base font-semibold text-gray-900" x-text="formatFileSize(controlPanelData?.metrics?.transfer?.download_bytes || 0)"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="bg-white border border-gray-200 rounded-lg p-4">
+                            <h4 class="text-lg font-semibold text-gray-800 mb-3">Environment</h4>
+                            <dl class="space-y-2 text-sm text-gray-700">
+                                <div class="flex items-center gap-2">
+                                    <dt class="font-medium text-gray-600 w-32">Bind Address</dt>
+                                    <dd class="font-mono text-xs" x-text="controlPanelData?.server?.host"></dd>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <dt class="font-medium text-gray-600 w-32">Port</dt>
+                                    <dd class="font-mono text-xs" x-text="controlPanelData?.server?.port"></dd>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <dt class="font-medium text-gray-600 w-32">Scheme</dt>
+                                    <dd class="font-mono text-xs" x-text="controlPanelData?.server?.scheme"></dd>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <dt class="font-medium text-gray-600 w-32">Platform</dt>
+                                    <dd class="font-mono text-xs" x-text="controlPanelData?.environment?.platform"></dd>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <dt class="font-medium text-gray-600 w-32">Python</dt>
+                                    <dd class="font-mono text-xs" x-text="controlPanelData?.environment?.python_version"></dd>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <dt class="font-medium text-gray-600 w-32">Working Dir</dt>
+                                    <dd class="font-mono text-xs truncate" x-text="controlPanelData?.environment?.working_directory"></dd>
+                                </div>
+                            </dl>
+                        </div>
+                    </section>
                 </div>
             </div>
         </div>
@@ -460,6 +713,11 @@
                 showNewFolder: false,
                 showTextShare: false,
                 showRename: false,
+                showControlPanel: false,
+                controlPanelLoading: false,
+                controlPanelError: '',
+                controlPanelData: null,
+                controlPanelFetchedAt: null,
 
                 // Form data
                 uploadFiles: [],
@@ -486,6 +744,10 @@
                 // Computed
                 get pathParts() {
                     return this.currentPath ? this.currentPath.split('/').filter(p => p) : [];
+                },
+
+                get controlPanelTimestamp() {
+                    return this.controlPanelFetchedAt ? new Date(this.controlPanelFetchedAt).toLocaleString() : '';
                 },
 
                 buildHeaders(additional = {}) {
@@ -632,6 +894,60 @@
                     return false;
                 },
 
+                async loadControlPanel(force = false) {
+                    if (!this.ensureAuthenticated(false)) {
+                        return;
+                    }
+                    if (this.controlPanelLoading) {
+                        return;
+                    }
+                    if (!force && this.controlPanelData) {
+                        return;
+                    }
+
+                    this.controlPanelLoading = true;
+                    this.controlPanelError = '';
+
+                    try {
+                        const response = await fetch('/api/admin/status', {
+                            headers: this.buildHeaders()
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return;
+                        }
+
+                        const payload = this.parseApiResponse(await response.json());
+                        if (payload.code === 0) {
+                            this.controlPanelData = payload.data || {};
+                            this.controlPanelFetchedAt = new Date().toISOString();
+                        } else {
+                            this.controlPanelError = payload.msg || 'Failed to load control panel data.';
+                        }
+                    } catch (e) {
+                        this.controlPanelError = 'Failed to load control panel data: ' + e.message;
+                    } finally {
+                        this.controlPanelLoading = false;
+                    }
+                },
+
+                async openControlPanel() {
+                    if (!this.ensureAuthenticated()) {
+                        return;
+                    }
+                    this.showControlPanel = true;
+                    await this.loadControlPanel(true);
+                },
+
+                async refreshControlPanel() {
+                    await this.loadControlPanel(true);
+                },
+
+                closeControlPanel() {
+                    this.showControlPanel = false;
+                },
+
                 parseApiResponse(data) {
                     if (data && typeof data === 'object' && 'detail' in data) {
                         return data.detail;
@@ -746,12 +1062,17 @@
                     this.showNewFolder = false;
                     this.showTextShare = false;
                     this.showRename = false;
+                    this.showControlPanel = false;
                     this.uploadFiles = [];
                     this.uploading = false;
                     this.shareText = '';
                     this.shareUrl = '';
                     this.renameTarget = null;
                     this.renameValue = '';
+                    this.controlPanelData = null;
+                    this.controlPanelError = '';
+                    this.controlPanelFetchedAt = null;
+                    this.controlPanelLoading = false;
 
                     if (message !== null) {
                         this.error = message;
@@ -777,12 +1098,17 @@
                     this.showNewFolder = false;
                     this.showTextShare = false;
                     this.showRename = false;
+                    this.showControlPanel = false;
                     this.uploadFiles = [];
                     this.uploading = false;
                     this.shareText = '';
                     this.shareUrl = '';
                     this.renameTarget = null;
                     this.renameValue = '';
+                    this.controlPanelData = null;
+                    this.controlPanelError = '';
+                    this.controlPanelFetchedAt = null;
+                    this.controlPanelLoading = false;
                     this.resetCredentials();
                     this.focusLogin();
                 },
