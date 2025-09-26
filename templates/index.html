@@ -50,6 +50,11 @@
                                 <i class="fas fa-share-alt"></i>
                                 <span class="hidden sm:inline">Share Text</span>
                             </button>
+                            <button @click="openDirectTransfer()"
+                                    class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
+                                <i class="fas fa-paper-plane"></i>
+                                <span class="hidden sm:inline">Direct Transfer</span>
+                            </button>
                             <button @click="openControlPanel()"
                                     class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors">
                                 <i class="fas fa-sliders-h"></i>
@@ -382,14 +387,14 @@
         <div x-show="showTextShare" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div class="bg-white rounded-lg max-w-2xl w-full p-6" @click.away="showTextShare = false">
                 <h3 class="text-lg font-semibold mb-4">Share Text</h3>
-                <textarea x-model="shareText" placeholder="Enter text to share..." 
+                <textarea x-model="shareText" placeholder="Enter text to share..."
                           class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-blue-500 focus:border-transparent h-32 resize-none"></textarea>
                 <div x-show="shareUrl" class="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
                     <p class="text-sm text-green-800 mb-2">Share URL created:</p>
                     <div class="flex items-center gap-2">
-                        <input type="text" :value="shareUrl" readonly 
+                        <input type="text" :value="shareUrl" readonly
                                class="flex-1 bg-white border border-green-300 rounded px-2 py-1 text-sm">
-                        <button @click="copyToClipboard(shareUrl)" 
+                        <button @click="copyToClipboard(shareUrl)"
                                 class="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700 transition-colors">
                             Copy
                         </button>
@@ -399,11 +404,160 @@
                     <button @click="showTextShare = false" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">
                         Cancel
                     </button>
-                    <button @click="createTextShare()" 
+                    <button @click="createTextShare()"
                             :disabled="!shareText.trim()"
                             class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 transition-colors">
                         Create Share
                     </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Direct Transfer Modal -->
+        <div x-show="showDirectTransfer" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div class="bg-white rounded-lg max-w-3xl w-full p-6 space-y-4" @click.away="closeDirectTransfer()">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h3 class="text-lg font-semibold text-gray-900">Direct Transfer</h3>
+                        <p class="text-sm text-gray-500">Send files directly to another user on this server.</p>
+                    </div>
+                    <button @click="closeDirectTransfer()" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+
+                <div x-show="directTransferSuccess" class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg" x-text="directTransferSuccess"></div>
+                <div x-show="directTransferError" class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg" x-text="directTransferError"></div>
+                <div x-show="directTransferListError" class="bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded-lg" x-text="directTransferListError"></div>
+
+                <form class="space-y-4" @submit.prevent="sendDirectTransfer()">
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Recipient</label>
+                            <select x-model="directTransferRecipient"
+                                    :disabled="directTransferRecipientsLoading || directTransferRecipients.length === 0"
+                                    class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                                <option value="" disabled>Select recipient</option>
+                                <template x-for="recipient in directTransferRecipients" :key="`recipient-${recipient}`">
+                                    <option :value="recipient" x-text="recipient"></option>
+                                </template>
+                            </select>
+                            <p x-show="directTransferRecipientsLoading" class="text-xs text-gray-500 mt-1">Loading users…</p>
+                            <p x-show="!directTransferRecipientsLoading && directTransferRecipients.length === 0" class="text-xs text-gray-500 mt-1">No other users are currently available.</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">File</label>
+                            <input type="file" @change="handleDirectTransferFile($event)" x-ref="directTransferFileInput"
+                                   class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-orange-500 focus:border-transparent">
+                            <p x-show="directTransferFile" class="text-xs text-gray-600 mt-2 flex items-center gap-2">
+                                <span class="font-medium" x-text="directTransferFile?.name"></span>
+                                <span x-text="formatFileSize(directTransferFile?.size || 0)" class="text-gray-500"></span>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-3">
+                        <button type="button" @click="closeDirectTransfer()" class="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors">Cancel</button>
+                        <button type="submit"
+                                :disabled="directTransferSending || !directTransferRecipient || !directTransferFile"
+                                class="bg-orange-600 hover:bg-orange-700 text-white px-4 py-2 rounded-lg disabled:opacity-50 transition-colors">
+                            <span x-show="!directTransferSending">Send</span>
+                            <span x-show="directTransferSending">Sending…</span>
+                        </button>
+                    </div>
+                </form>
+
+                <div class="border-t border-gray-200 pt-4">
+                    <div class="flex flex-wrap items-center gap-3 mb-4">
+                        <div class="flex gap-2">
+                            <button type="button"
+                                    @click="directTransferTab = 'incoming'"
+                                    :class="directTransferTab === 'incoming' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700'"
+                                    class="px-3 py-1 rounded-lg text-sm font-medium transition-colors">
+                                Incoming
+                            </button>
+                            <button type="button"
+                                    @click="directTransferTab = 'outgoing'"
+                                    :class="directTransferTab === 'outgoing' ? 'bg-orange-600 text-white' : 'bg-gray-200 text-gray-700'"
+                                    class="px-3 py-1 rounded-lg text-sm font-medium transition-colors">
+                                Sent
+                            </button>
+                        </div>
+                        <button type="button" @click="refreshDirectTransferLists()"
+                                class="ml-auto bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1 rounded-lg text-sm transition-colors">
+                            Refresh
+                        </button>
+                    </div>
+
+                    <div x-show="directTransferListLoading" class="bg-blue-50 border border-blue-100 text-blue-700 px-4 py-3 rounded-lg">
+                        <i class="fas fa-circle-notch fa-spin mr-2"></i>
+                        Loading transfers…
+                    </div>
+
+                    <div x-show="!directTransferListLoading && directTransferTab === 'incoming'" class="space-y-3">
+                        <template x-if="directTransferIncoming.length > 0">
+                            <ul class="space-y-3">
+                                <template x-for="item in directTransferIncoming" :key="`incoming-${item.id}`">
+                                    <li class="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                            <div>
+                                                <p class="font-medium text-gray-800" x-text="item.filename"></p>
+                                                <p class="text-sm text-gray-600">
+                                                    From <span class="font-semibold" x-text="item.sender"></span>
+                                                    • <span x-text="formatFileSize(item.size)"></span>
+                                                    • <span x-text="formatDate(item.createdAt)"></span>
+                                                    <span x-show="item.expiresAt" class="ml-2 text-orange-600">
+                                                        Expires <span x-text="formatDate(item.expiresAt)"></span>
+                                                    </span>
+                                                </p>
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <button @click="downloadDirectTransfer(item)"
+                                                        class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg text-sm transition-colors">
+                                                    Download
+                                                </button>
+                                                <button @click="deleteDirectTransfer(item, 'incoming')"
+                                                        class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm transition-colors">
+                                                    Decline
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </template>
+                            </ul>
+                        </template>
+                        <p x-show="directTransferIncoming.length === 0" class="text-sm text-gray-500">No incoming transfers.</p>
+                    </div>
+
+                    <div x-show="!directTransferListLoading && directTransferTab === 'outgoing'" class="space-y-3">
+                        <template x-if="directTransferOutgoing.length > 0">
+                            <ul class="space-y-3">
+                                <template x-for="item in directTransferOutgoing" :key="`outgoing-${item.id}`">
+                                    <li class="border border-gray-200 rounded-lg p-4">
+                                        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                                            <div>
+                                                <p class="font-medium text-gray-800" x-text="item.filename"></p>
+                                                <p class="text-sm text-gray-600">
+                                                    To <span class="font-semibold" x-text="item.recipient"></span>
+                                                    • <span x-text="formatFileSize(item.size)"></span>
+                                                    • <span x-text="formatDate(item.createdAt)"></span>
+                                                    <span x-show="item.expiresAt" class="ml-2 text-orange-600">
+                                                        Expires <span x-text="formatDate(item.expiresAt)"></span>
+                                                    </span>
+                                                </p>
+                                            </div>
+                                            <div class="flex gap-2">
+                                                <button @click="deleteDirectTransfer(item, 'outgoing')"
+                                                        class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-2 rounded-lg text-sm transition-colors">
+                                                    Cancel
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </li>
+                                </template>
+                            </ul>
+                        </template>
+                        <p x-show="directTransferOutgoing.length === 0" class="text-sm text-gray-500">No pending sent transfers.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -804,6 +958,7 @@
                 showUpload: false,
                 showNewFolder: false,
                 showTextShare: false,
+                showDirectTransfer: false,
                 showRename: false,
                 showControlPanel: false,
                 controlPanelLoading: false,
@@ -820,6 +975,20 @@
                 renameValue: '',
                 renameTarget: null,
                 uploading: false,
+
+                // Direct transfer state
+                directTransferRecipients: [],
+                directTransferRecipientsLoading: false,
+                directTransferRecipient: '',
+                directTransferFile: null,
+                directTransferSending: false,
+                directTransferSuccess: '',
+                directTransferError: '',
+                directTransferListError: '',
+                directTransferIncoming: [],
+                directTransferOutgoing: [],
+                directTransferListLoading: false,
+                directTransferTab: 'incoming',
 
                 init() {
                     const savedUser = localStorage.getItem('chfsAuthUser');
@@ -1176,6 +1345,7 @@
                                 this.currentRoot = roots[0] || '';
                                 this.currentPath = '';
                             }
+                            await this.refreshDirectTransferLists();
                             return true;
                         }
 
@@ -1247,6 +1417,7 @@
                     this.showUpload = false;
                     this.showNewFolder = false;
                     this.showTextShare = false;
+                    this.showDirectTransfer = false;
                     this.showRename = false;
                     this.showControlPanel = false;
                     this.uploadFiles = [];
@@ -1255,6 +1426,18 @@
                     this.shareUrl = '';
                     this.renameTarget = null;
                     this.renameValue = '';
+                    this.directTransferRecipients = [];
+                    this.directTransferRecipientsLoading = false;
+                    this.directTransferRecipient = '';
+                    this.directTransferFile = null;
+                    this.directTransferSending = false;
+                    this.directTransferSuccess = '';
+                    this.directTransferError = '';
+                    this.directTransferListError = '';
+                    this.directTransferIncoming = [];
+                    this.directTransferOutgoing = [];
+                    this.directTransferListLoading = false;
+                    this.directTransferTab = 'incoming';
                     this.controlPanelData = null;
                     this.controlPanelError = '';
                     this.controlPanelFetchedAt = null;
@@ -1283,6 +1466,7 @@
                     this.showUpload = false;
                     this.showNewFolder = false;
                     this.showTextShare = false;
+                    this.showDirectTransfer = false;
                     this.showRename = false;
                     this.showControlPanel = false;
                     this.uploadFiles = [];
@@ -1291,6 +1475,18 @@
                     this.shareUrl = '';
                     this.renameTarget = null;
                     this.renameValue = '';
+                    this.directTransferRecipients = [];
+                    this.directTransferRecipientsLoading = false;
+                    this.directTransferRecipient = '';
+                    this.directTransferFile = null;
+                    this.directTransferSending = false;
+                    this.directTransferSuccess = '';
+                    this.directTransferError = '';
+                    this.directTransferListError = '';
+                    this.directTransferIncoming = [];
+                    this.directTransferOutgoing = [];
+                    this.directTransferListLoading = false;
+                    this.directTransferTab = 'incoming';
                     this.controlPanelData = null;
                     this.controlPanelError = '';
                     this.controlPanelFetchedAt = null;
@@ -1616,6 +1812,248 @@
                         }
                     } catch (e) {
                         alert('Text share failed: ' + e.message);
+                    }
+                },
+
+                async openDirectTransfer() {
+                    if (!this.ensureAuthenticated()) {
+                        return;
+                    }
+                    this.directTransferError = '';
+                    this.directTransferSuccess = '';
+                    this.directTransferListError = '';
+                    this.directTransferFile = null;
+                    this.directTransferTab = 'incoming';
+                    this.showDirectTransfer = true;
+                    if (this.$refs.directTransferFileInput) {
+                        this.$refs.directTransferFileInput.value = '';
+                    }
+                    await Promise.all([
+                        this.loadDirectTransferRecipients(),
+                        this.refreshDirectTransferLists(),
+                    ]);
+                },
+
+                closeDirectTransfer() {
+                    this.showDirectTransfer = false;
+                    this.directTransferSending = false;
+                    this.directTransferRecipientsLoading = false;
+                    this.directTransferFile = null;
+                    this.directTransferError = '';
+                    this.directTransferSuccess = '';
+                    this.directTransferListError = '';
+                    if (this.$refs.directTransferFileInput) {
+                        this.$refs.directTransferFileInput.value = '';
+                    }
+                },
+
+                handleDirectTransferFile(event) {
+                    const files = event?.target?.files;
+                    this.directTransferFile = files && files[0] ? files[0] : null;
+                },
+
+                async loadDirectTransferRecipients() {
+                    if (!this.ensureAuthenticated(false)) {
+                        return;
+                    }
+                    this.directTransferRecipientsLoading = true;
+                    try {
+                        const response = await fetch('/api/direct-transfer/recipients', {
+                            headers: this.buildHeaders(),
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return;
+                        }
+
+                        const payload = this.parseApiResponse(await response.json());
+                        if (response.ok && payload.code === 0) {
+                            const names = Array.isArray(payload.data?.recipients) ? payload.data.recipients : [];
+                            this.directTransferRecipients = names;
+                            if (!names.includes(this.directTransferRecipient)) {
+                                this.directTransferRecipient = names[0] || '';
+                            }
+                        } else {
+                            this.directTransferListError = payload?.msg || 'Failed to load recipients.';
+                        }
+                    } catch (e) {
+                        this.directTransferListError = 'Failed to load recipients: ' + e.message;
+                    } finally {
+                        this.directTransferRecipientsLoading = false;
+                    }
+                },
+
+                async fetchDirectTransferList(direction) {
+                    try {
+                        const response = await fetch(`/api/direct-transfer/list?direction=${encodeURIComponent(direction)}`, {
+                            headers: this.buildHeaders(),
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return [];
+                        }
+
+                        const payload = this.parseApiResponse(await response.json());
+                        if (response.ok && payload.code === 0) {
+                            const transfers = Array.isArray(payload.data?.transfers) ? payload.data.transfers : [];
+                            return transfers;
+                        }
+
+                        throw new Error(payload?.msg || 'Failed to load transfers.');
+                    } catch (e) {
+                        throw new Error(e.message || 'Failed to load transfers.');
+                    }
+                },
+
+                async refreshDirectTransferLists() {
+                    if (!this.ensureAuthenticated(false)) {
+                        this.directTransferIncoming = [];
+                        this.directTransferOutgoing = [];
+                        return;
+                    }
+                    this.directTransferListLoading = true;
+                    this.directTransferListError = '';
+                    try {
+                        const [incoming, outgoing] = await Promise.all([
+                            this.fetchDirectTransferList('incoming'),
+                            this.fetchDirectTransferList('outgoing'),
+                        ]);
+                        this.directTransferIncoming = incoming;
+                        this.directTransferOutgoing = outgoing;
+                    } catch (e) {
+                        this.directTransferListError = e.message || 'Failed to load transfers.';
+                    } finally {
+                        this.directTransferListLoading = false;
+                    }
+                },
+
+                async sendDirectTransfer() {
+                    if (!this.ensureAuthenticated()) {
+                        return;
+                    }
+                    if (!this.directTransferRecipient) {
+                        this.directTransferError = 'Please choose a recipient.';
+                        return;
+                    }
+                    if (!this.directTransferFile) {
+                        this.directTransferError = 'Please select a file to send.';
+                        return;
+                    }
+
+                    this.directTransferError = '';
+                    this.directTransferSuccess = '';
+                    this.directTransferSending = true;
+
+                    const formData = new FormData();
+                    formData.append('recipient', this.directTransferRecipient);
+                    formData.append('file', this.directTransferFile);
+
+                    try {
+                        const response = await fetch('/api/direct-transfer/send', {
+                            method: 'POST',
+                            headers: this.buildHeaders(),
+                            body: formData,
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return;
+                        }
+
+                        const payload = this.parseApiResponse(await response.json());
+                        if (response.ok && payload.code === 0) {
+                            const filename = payload.data?.transfer?.filename || (this.directTransferFile?.name || 'file');
+                            this.directTransferSuccess = `Sent ${filename} to ${this.directTransferRecipient}.`;
+                            this.directTransferFile = null;
+                            if (this.$refs.directTransferFileInput) {
+                                this.$refs.directTransferFileInput.value = '';
+                            }
+                            await this.refreshDirectTransferLists();
+                        } else {
+                            this.directTransferError = payload?.msg || 'Failed to send transfer.';
+                        }
+                    } catch (e) {
+                        this.directTransferError = 'Failed to send transfer: ' + e.message;
+                    } finally {
+                        this.directTransferSending = false;
+                    }
+                },
+
+                async downloadDirectTransfer(item) {
+                    if (!item || !item.id) {
+                        return;
+                    }
+                    if (!this.ensureAuthenticated()) {
+                        return;
+                    }
+
+                    this.directTransferError = '';
+
+                    try {
+                        const response = await fetch(`/api/direct-transfer/download/${encodeURIComponent(item.id)}`, {
+                            headers: this.buildHeaders(),
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return;
+                        }
+
+                        if (!response.ok) {
+                            const payload = this.parseApiResponse(await response.json());
+                            this.directTransferError = payload?.msg || 'Failed to download transfer.';
+                            return;
+                        }
+
+                        const blob = await response.blob();
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = item.filename || 'download';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(url);
+                        this.directTransferSuccess = `Downloaded ${item.filename || 'file'}.`;
+                        await this.refreshDirectTransferLists();
+                    } catch (e) {
+                        this.directTransferError = 'Failed to download transfer: ' + e.message;
+                    }
+                },
+
+                async deleteDirectTransfer(item, direction = 'incoming') {
+                    if (!item || !item.id) {
+                        return;
+                    }
+                    if (!this.ensureAuthenticated()) {
+                        return;
+                    }
+
+                    this.directTransferError = '';
+
+                    try {
+                        const response = await fetch(`/api/direct-transfer/${encodeURIComponent(item.id)}`, {
+                            method: 'DELETE',
+                            headers: this.buildHeaders(),
+                        });
+
+                        if (response.status === 401) {
+                            this.handleUnauthorized();
+                            return;
+                        }
+
+                        const payload = this.parseApiResponse(await response.json());
+                        if (response.ok && payload.code === 0) {
+                            const action = direction === 'outgoing' ? 'Transfer cancelled.' : 'Transfer removed.';
+                            this.directTransferSuccess = payload?.msg || action;
+                            await this.refreshDirectTransferLists();
+                        } else {
+                            this.directTransferError = payload?.msg || 'Failed to remove transfer.';
+                        }
+                    } catch (e) {
+                        this.directTransferError = 'Failed to remove transfer: ' + e.message;
                     }
                 },
 
