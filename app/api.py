@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from .models import ApiResponse, ResponseCode, FileInfo, TextShare
 from .auth import get_current_user, UserInfo
-from .rules import check_api_access
+from .rules import check_api_access, get_accessible_roots
 from .fs import (
     list_directory, create_directory, delete_file_or_directory,
     rename_file_or_directory, save_uploaded_file, open_file_for_download,
@@ -30,6 +30,24 @@ api_router = APIRouter(prefix="/api", tags=["api"])
 
 # Text shares storage (in-memory for simplicity)
 text_shares = {}
+
+
+# Session endpoints
+@api_router.get("/session")
+async def get_session(request: Request, user: UserInfo = Depends(get_current_user)):
+    """Return current session information"""
+
+    client_ip = get_client_ip(request)
+    roots = get_accessible_roots(user, client_ip)
+
+    return ApiResponse(
+        code=ResponseCode.SUCCESS.value,
+        msg="success",
+        data={
+            "user": {"name": user.name},
+            "roots": roots,
+        }
+    ).to_dict()
 
 
 # Request models
