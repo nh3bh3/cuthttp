@@ -238,11 +238,24 @@ class HttpRange:
             start = max(0, content_length - self.suffix_length)
             end = content_length - 1
         else:
-            start = self.start or 0
+            start = self.start if self.start is not None else 0
             end = self.end if self.end is not None else content_length - 1
-            end = min(end, content_length - 1)
-            start = max(0, start)
-        
+
+            # Clamp values within valid bounds
+            if content_length <= 0:
+                return 0, -1
+
+            start = max(0, min(start, content_length))
+            end = max(-1, min(end, content_length - 1))
+
+            # If start moves beyond the last byte, produce an empty range at EOF
+            if start > content_length - 1:
+                start = content_length
+                end = content_length - 1
+
+            if end < start and end != content_length - 1:
+                end = start
+
         return start, end
 
 
